@@ -68,7 +68,7 @@ export default function ContasAPagar() {
           conta_bancaria:contas_bancarias(nome_banco),
           criado_por:usuarios!contas_a_pagar_created_by_fkey(nome)
         `)
-        .order('data_vencimento', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
       setContas(data || []);
