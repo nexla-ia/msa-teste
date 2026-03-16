@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Search, DollarSign, TrendingDown, AlertCircle, Calendar, CheckCircle, X } from 'lucide-react';
+import { Search, DollarSign, TrendingDown, AlertCircle, Calendar, CheckCircle, X, SlidersHorizontal, ChevronDown, ChevronUp } from 'lucide-react';
 import { formatCurrency } from '../lib/formatters';
 import ConfirmDialog from '../components/ConfirmDialog';
 
@@ -34,7 +34,14 @@ export default function ContasAPagar() {
   const [contas, setContas] = useState<ContaPagar[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState('');
-  const [filtroStatus, setFiltroStatus] = useState<'todos' | 'pendente' | 'pago' | 'atrasado'>('todos');
+  const [filtroStatus, setFiltroStatus] = useState('');
+  const [filtroTipo, setFiltroTipo] = useState('');
+  const [filtroPagamento, setFiltroPagamento] = useState('');
+  const [filtroVencDe, setFiltroVencDe] = useState('');
+  const [filtroVencAte, setFiltroVencAte] = useState('');
+  const [filtroGeradoDe, setFiltroGeradoDe] = useState('');
+  const [filtroGeradoAte, setFiltroGeradoAte] = useState('');
+  const [showFiltros, setShowFiltros] = useState(false);
   const [contaSelecionada, setContaSelecionada] = useState<ContaPagar | null>(null);
   const [showPagarModal, setShowPagarModal] = useState(false);
   const [valorPagamento, setValorPagamento] = useState('');
@@ -155,17 +162,41 @@ export default function ContasAPagar() {
     }
   };
 
+  const formasPagamento = [...new Set(contas.map(c => c.forma_pagamento).filter(Boolean))] as string[];
+
   const contasFiltradas = contas.filter(conta => {
-    const matchBusca = busca === '' ||
-      conta.descricao.toLowerCase().includes(busca.toLowerCase()) ||
-      conta.parceiro?.nome_parceiro?.toLowerCase().includes(busca.toLowerCase()) ||
-      conta.programa?.nome?.toLowerCase().includes(busca.toLowerCase()) ||
-      conta.forma_pagamento?.toLowerCase().includes(busca.toLowerCase());
-
-    const matchStatus = filtroStatus === 'todos' || conta.status_pagamento === filtroStatus;
-
-    return matchBusca && matchStatus;
+    if (busca) {
+      const q = busca.toLowerCase();
+      const match =
+        conta.descricao.toLowerCase().includes(q) ||
+        conta.parceiro?.nome_parceiro?.toLowerCase().includes(q) ||
+        conta.programa?.nome?.toLowerCase().includes(q) ||
+        conta.forma_pagamento?.toLowerCase().includes(q) ||
+        conta.cartao?.cartao?.toLowerCase().includes(q) ||
+        conta.criado_por?.nome?.toLowerCase().includes(q);
+      if (!match) return false;
+    }
+    if (filtroStatus && conta.status_pagamento !== filtroStatus) return false;
+    if (filtroTipo && conta.origem_tipo !== filtroTipo) return false;
+    if (filtroPagamento && conta.forma_pagamento !== filtroPagamento) return false;
+    if (filtroVencDe && conta.data_vencimento < filtroVencDe) return false;
+    if (filtroVencAte && conta.data_vencimento > filtroVencAte) return false;
+    if (filtroGeradoDe && conta.created_at.split('T')[0] < filtroGeradoDe) return false;
+    if (filtroGeradoAte && conta.created_at.split('T')[0] > filtroGeradoAte) return false;
+    return true;
   });
+
+  const filtrosAtivos = [filtroStatus, filtroTipo, filtroPagamento, filtroVencDe, filtroVencAte, filtroGeradoDe, filtroGeradoAte].filter(Boolean).length;
+
+  const limparFiltros = () => {
+    setFiltroStatus('');
+    setFiltroTipo('');
+    setFiltroPagamento('');
+    setFiltroVencDe('');
+    setFiltroVencAte('');
+    setFiltroGeradoDe('');
+    setFiltroGeradoAte('');
+  };
 
   const calcularTotais = () => {
     const totalPendente = contasFiltradas
@@ -291,29 +322,102 @@ export default function ContasAPagar() {
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border border-slate-200">
-        <div className="p-6 border-b border-slate-200">
-          <div className="flex flex-col md:flex-row gap-4">
+        <div className="p-4 border-b border-slate-200 space-y-3">
+          {/* Busca + botão filtros */}
+          <div className="flex gap-3">
             <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
               <input
                 type="text"
-                placeholder="Buscar por descrição, parceiro, programa..."
+                placeholder="Buscar por descrição, parceiro, programa, cartão..."
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
               />
             </div>
-            <select
-              value={filtroStatus}
-              onChange={(e) => setFiltroStatus(e.target.value as any)}
-              className="px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            <button
+              onClick={() => setShowFiltros(v => !v)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${showFiltros ? 'bg-blue-50 border-blue-300 text-blue-700' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}
             >
-              <option value="todos">Todos os Status</option>
-              <option value="pendente">Pendente</option>
-              <option value="pago">Pago</option>
-              <option value="atrasado">Atrasado</option>
-            </select>
+              <SlidersHorizontal className="w-4 h-4" />
+              Filtros
+              {filtrosAtivos > 0 && (
+                <span className="bg-blue-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">{filtrosAtivos}</span>
+              )}
+              {showFiltros ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
           </div>
+
+          {/* Painel de filtros avançados */}
+          {showFiltros && (
+            <div className="pt-3 border-t border-slate-100 space-y-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Status</label>
+                  <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                    <option value="">Todos</option>
+                    <option value="pendente">Pendente</option>
+                    <option value="pago">Pago</option>
+                    <option value="cancelado">Cancelado</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Tipo</label>
+                  <select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                    <option value="">Todos</option>
+                    <option value="compra">Compra de Pontos</option>
+                    <option value="compra_bonificada">Compra Bonificada</option>
+                    <option value="clube">Mensalidade Clube</option>
+                    <option value="transferencia_pontos">Transferência</option>
+                    <option value="ajuste">Ajuste</option>
+                    <option value="outro">Outro</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Forma de Pagamento</label>
+                  <select value={filtroPagamento} onChange={e => setFiltroPagamento(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                    <option value="">Todas</option>
+                    {formasPagamento.map(f => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Vencimento de</label>
+                  <input type="date" value={filtroVencDe} onChange={e => setFiltroVencDe(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Vencimento até</label>
+                  <input type="date" value={filtroVencAte} onChange={e => setFiltroVencAte(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Gerado de</label>
+                  <input type="date" value={filtroGeradoDe} onChange={e => setFiltroGeradoDe(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Gerado até</label>
+                  <input type="date" value={filtroGeradoAte} onChange={e => setFiltroGeradoAte(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+
+              {filtrosAtivos > 0 && (
+                <div className="flex justify-end">
+                  <button onClick={limparFiltros}
+                    className="text-xs text-slate-500 hover:text-red-600 flex items-center gap-1">
+                    <X className="w-3 h-3" /> Limpar filtros
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="overflow-x-auto">
