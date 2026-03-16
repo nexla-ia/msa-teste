@@ -27,6 +27,7 @@ type ContaPagar = {
   programa?: { nome: string };
   cartao?: { cartao: string };
   conta_bancaria?: { nome_banco: string };
+  criado_por?: { nome: string };
 };
 
 export default function ContasAPagar() {
@@ -64,9 +65,10 @@ export default function ContasAPagar() {
           parceiro:parceiros(nome_parceiro),
           programa:programas_fidelidade(nome),
           cartao:cartoes_credito(cartao),
-          conta_bancaria:contas_bancarias(nome_banco)
+          conta_bancaria:contas_bancarias(nome_banco),
+          criado_por:usuarios!contas_a_pagar_created_by_fkey(nome)
         `)
-        .order('data_vencimento', { ascending: true });
+        .order('data_vencimento', { ascending: false });
 
       if (error) throw error;
       setContas(data || []);
@@ -197,6 +199,11 @@ export default function ContasAPagar() {
 
     return { label: 'Pendente', color: 'bg-yellow-100 text-yellow-800' };
   };
+
+  const formatDescricao = (desc: string) =>
+    desc.replace(/([\d]+(?:\.\d+)?)\s*pontos\/milhas/g, (_, num) =>
+      `${parseFloat(num).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} pontos/milhas`
+    );
 
   const getTipoOrigemLabel = (tipo: string) => {
     const tipos: Record<string, string> = {
@@ -335,6 +342,9 @@ export default function ContasAPagar() {
                   Status
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                  Gerado em / Por
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
                   Ações
                 </th>
               </tr>
@@ -349,7 +359,7 @@ export default function ContasAPagar() {
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-900">
                       <div className="max-w-xs">
-                        <p className="font-medium truncate">{conta.descricao}</p>
+                        <p className="font-medium truncate">{formatDescricao(conta.descricao)}</p>
                         {conta.parceiro && (
                           <p className="text-xs text-slate-500">{conta.parceiro.nome_parceiro}</p>
                         )}
@@ -382,6 +392,17 @@ export default function ContasAPagar() {
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${status.color}`}>
                         {status.label}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-slate-500">
+                      <div>
+                        <p>{new Date(conta.created_at).toLocaleDateString('pt-BR')}</p>
+                        <p className="text-xs text-slate-400">
+                          {new Date(conta.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                        {conta.criado_por?.nome && (
+                          <p className="text-xs text-slate-400">{conta.criado_por.nome}</p>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       {conta.status_pagamento === 'pendente' && (
