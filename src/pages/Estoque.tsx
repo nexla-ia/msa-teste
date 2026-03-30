@@ -380,10 +380,13 @@ export default function Estoque() {
                     return (
                       <tr key={mov.id} className="hover:bg-slate-50">
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-900">
-                          {new Date(mov.data).toLocaleString('pt-BR', {
-                            day: '2-digit', month: '2-digit', year: 'numeric',
-                            hour: '2-digit', minute: '2-digit',
-                          })}
+                          {(() => {
+                            const d = mov.data;
+                            // data_operacao vem como "YYYY-MM-DD" (date) ou timestamptz
+                            const dateStr = typeof d === 'string' && d.length >= 10 ? d.substring(0, 10) : d;
+                            const [y, m, day] = dateStr.split('-');
+                            return `${day}/${m}/${y}`;
+                          })()}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm">
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${
