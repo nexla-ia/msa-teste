@@ -355,6 +355,26 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
         saldoRestanteParaTransferencias[pid] = Math.max(0, saldoEstoqueMap[pid] - (saldoConsumidoPorPrograma[pid] || 0));
       }
 
+      // Buscar custo por milheiro das transferências de pontos via estoque_movimentacoes
+      const transferPontosIds = (transferenciasRes.data || []).map((t: any) => t.id);
+      const custoMapPontos: Record<string, number> = {};
+      if (transferPontosIds.length > 0) {
+        const { data: movsPontos } = await supabase
+          .from('estoque_movimentacoes')
+          .select('referencia_id, valor_total, quantidade')
+          .in('referencia_id', transferPontosIds)
+          .eq('referencia_tabela', 'transferencia_pontos')
+          .eq('tipo', 'transferencia_entrada')
+          .eq('parceiro_id', id);
+        for (const mov of (movsPontos || []) as any[]) {
+          const qtd = Number(mov.quantidade) || 0;
+          const val = Number(mov.valor_total) || 0;
+          if (qtd > 0) {
+            custoMapPontos[mov.referencia_id] = (val / qtd) * 1000;
+          }
+        }
+      }
+
       const transferenciasMapped: CompraLote[] = (transferenciasRes.data || []).map((t: any) => {
         const totalRecebido = (Number(t.destino_quantidade) || 0) + (Number(t.destino_quantidade_bonus) || 0);
         const origemNome = (t.origem_programa as any)?.nome || 'outro programa';
@@ -365,7 +385,7 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
           bonus: Number(t.destino_quantidade_bonus) || 0,
           total_pontos: totalRecebido,
           valor_total: 0,
-          valor_milheiro: 0,
+          valor_milheiro: custoMapPontos[t.id] || 0,
           status: t.status,
           tipo: 'Transferência de Pontos',
           programas_fidelidade: t.programas_fidelidade as { id: string; nome: string } | null,
@@ -769,16 +789,6 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
                     <p className={`text-xs font-medium rounded px-2 py-1 ${temDiferenca ? 'text-amber-700 bg-amber-50 border border-amber-200' : 'text-emerald-700 bg-emerald-50 border border-emerald-200'}`}>
                       Saldo disponivel para venda: <span className="font-bold">{saldo.toLocaleString('pt-BR')} pontos</span>
                     </p>
-                    {custoMedioEstoque > 0 && (
-                      <p className="text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-1">
-                        Custo médio atual: <span className="font-bold">{formatCurrency(custoMedioEstoque)}</span> / milheiro
-                      </p>
-                    )}
-                    {temDiferenca && (
-                      <p className="text-xs text-gray-500 px-1">
-                        As compras somam {totalCompras.toLocaleString('pt-BR')} pts, mas {(totalCompras - saldo).toLocaleString('pt-BR')} pts ja foram utilizados (transferencias ou vendas anteriores).
-                      </p>
-                    )}
                   </div>
                 );
               })()}
