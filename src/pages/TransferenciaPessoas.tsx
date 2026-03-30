@@ -598,6 +598,15 @@ export default function TransferenciaPessoas() {
 
       if (error) throw error;
 
+      await supabase.from('logs').insert({
+        usuario_id: usuario?.id,
+        usuario_nome: usuario?.nome || '',
+        acao: 'INSERT',
+        linha_afetada: `Transferência entre Pessoas: ${formData.quantidade} pts`,
+        dados_antes: null,
+        dados_depois: formData
+      });
+
       setDialogConfig({
         isOpen: true,
         type: 'success',
@@ -638,6 +647,15 @@ export default function TransferenciaPessoas() {
         .eq('id', id);
 
       if (error) throw error;
+
+      await supabase.from('logs').insert({
+        usuario_id: usuario?.id,
+        usuario_nome: usuario?.nome || '',
+        acao: 'DELETE',
+        linha_afetada: `Transferência entre Pessoas: id=${id}`,
+        dados_antes: null,
+        dados_depois: null
+      });
 
       setDialogConfig({
         isOpen: true,

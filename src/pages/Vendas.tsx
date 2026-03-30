@@ -427,6 +427,15 @@ export default function Vendas() {
 
           if (error) throw error;
 
+          await supabase.from('logs').insert({
+            usuario_id: usuario?.id,
+            usuario_nome: usuario?.nome || '',
+            acao: 'DELETE',
+            linha_afetada: `Venda: id=${id}`,
+            dados_antes: null,
+            dados_depois: null
+          });
+
           setDialogConfig({
             isOpen: true,
             type: 'success',
@@ -556,6 +565,15 @@ export default function Vendas() {
 
         if (localizadorError) throw localizadorError;
       }
+
+      await supabase.from('logs').insert({
+        usuario_id: usuario?.id,
+        usuario_nome: usuario?.nome || '',
+        acao: 'INSERT',
+        linha_afetada: `Venda: ${formData.quantidade_milhas} pts`,
+        dados_antes: null,
+        dados_depois: formData
+      });
 
       setDialogConfig({
         isOpen: true,

@@ -411,6 +411,15 @@ export default function Compras() {
 
         if (error) throw error;
 
+        await supabase.from('logs').insert({
+          usuario_id: usuario?.id,
+          usuario_nome: usuario?.nome || '',
+          acao: 'INSERT',
+          linha_afetada: `Compra: ${excelData.length} registros (importação em lote)`,
+          dados_antes: null,
+          dados_depois: dataToInsert
+        });
+
         setDialogConfig({
           isOpen: true,
           type: 'success',
@@ -469,6 +478,16 @@ export default function Compras() {
 
           if (error) throw error;
 
+          const parceiro = parceiros.find(p => p.id === formData.parceiro_id);
+          await supabase.from('logs').insert({
+            usuario_id: usuario?.id,
+            usuario_nome: usuario?.nome || '',
+            acao: 'UPDATE',
+            linha_afetada: `Compra: ${formData.pontos_milhas} pts - ${parceiro?.nome_parceiro}`,
+            dados_antes: null,
+            dados_depois: formData
+          });
+
           setDialogConfig({
             isOpen: true,
             type: 'success',
@@ -501,6 +520,16 @@ export default function Compras() {
 
           if (error) throw error;
 
+          const parceiro = parceiros.find(p => p.id === formData.parceiro_id);
+          await supabase.from('logs').insert({
+            usuario_id: usuario?.id,
+            usuario_nome: usuario?.nome || '',
+            acao: 'INSERT',
+            linha_afetada: `Compra: ${formData.pontos_milhas} pts - ${parceiro?.nome_parceiro}`,
+            dados_antes: null,
+            dados_depois: formData
+          });
+
           setDialogConfig({
             isOpen: true,
             type: 'success',
@@ -513,6 +542,16 @@ export default function Compras() {
             .insert([{ ...baseData, status }]);
 
           if (error) throw error;
+
+          const parceiro = parceiros.find(p => p.id === formData.parceiro_id);
+          await supabase.from('logs').insert({
+            usuario_id: usuario?.id,
+            usuario_nome: usuario?.nome || '',
+            acao: 'INSERT',
+            linha_afetada: `Compra: ${formData.pontos_milhas} pts - ${parceiro?.nome_parceiro}`,
+            dados_antes: null,
+            dados_depois: formData
+          });
 
           const mensagemSucesso = status === 'Pendente'
             ? 'Compra registrada com sucesso! Os pontos serão creditados automaticamente quando a data de entrada chegar.'
@@ -598,6 +637,15 @@ export default function Compras() {
       }
 
       if (error) throw error;
+
+      await supabase.from('logs').insert({
+        usuario_id: usuario?.id,
+        usuario_nome: usuario?.nome || '',
+        acao: 'DELETE',
+        linha_afetada: `Compra: id=${id}`,
+        dados_antes: null,
+        dados_depois: null
+      });
 
       setDialogConfig({
         isOpen: true,

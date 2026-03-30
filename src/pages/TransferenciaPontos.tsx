@@ -607,11 +607,29 @@ export default function TransferenciaPontos() {
           .update(dataToSave)
           .eq('id', editingItem.id);
         if (error) throw error;
+
+        await supabase.from('logs').insert({
+          usuario_id: usuario?.id,
+          usuario_nome: usuario?.nome || '',
+          acao: 'UPDATE',
+          linha_afetada: `Transferência de Pontos: ${formData.origem_quantidade} pts`,
+          dados_antes: null,
+          dados_depois: formData
+        });
       } else {
         const { error: insertError } = await supabase
           .from('transferencia_pontos')
           .insert([dataToSave]);
         if (insertError) throw insertError;
+
+        await supabase.from('logs').insert({
+          usuario_id: usuario?.id,
+          usuario_nome: usuario?.nome || '',
+          acao: 'INSERT',
+          linha_afetada: `Transferência de Pontos: ${formData.origem_quantidade} pts`,
+          dados_antes: null,
+          dados_depois: formData
+        });
 
         // Os triggers do banco cuidarão de:
         // 1. Debitar origem imediatamente
@@ -686,6 +704,15 @@ export default function TransferenciaPontos() {
             .eq('id', id);
 
           if (error) throw error;
+
+          await supabase.from('logs').insert({
+            usuario_id: usuario?.id,
+            usuario_nome: usuario?.nome || '',
+            acao: 'DELETE',
+            linha_afetada: `Transferência de Pontos: id=${id}`,
+            dados_antes: null,
+            dados_depois: null
+          });
 
           fetchData();
           setDialogConfig({

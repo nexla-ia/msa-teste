@@ -448,11 +448,29 @@ export default function CompraBonificada() {
         }
 
         if (error) throw error;
+
+        await supabase.from('logs').insert({
+          usuario_id: usuario?.id,
+          usuario_nome: usuario?.nome || '',
+          acao: 'UPDATE',
+          linha_afetada: `Compra Bonificada: ${formData.quantidade_pontos} pts`,
+          dados_antes: null,
+          dados_depois: formData
+        });
       } else {
         const { error } = await supabase
           .from('compra_bonificada')
           .insert([dataToSave]);
         if (error) throw error;
+
+        await supabase.from('logs').insert({
+          usuario_id: usuario?.id,
+          usuario_nome: usuario?.nome || '',
+          acao: 'INSERT',
+          linha_afetada: `Compra Bonificada: ${formData.quantidade_pontos} pts`,
+          dados_antes: null,
+          dados_depois: formData
+        });
 
         if (formData.recebimento_pontos && formData.quantidade_pontos) {
           const parceiroNome = getParceiroNome(formData.parceiro_id);
@@ -523,6 +541,16 @@ export default function CompraBonificada() {
           }
 
           if (error) throw error;
+
+          await supabase.from('logs').insert({
+            usuario_id: usuario?.id,
+            usuario_nome: usuario?.nome || '',
+            acao: 'DELETE',
+            linha_afetada: `Compra Bonificada: id=${id}`,
+            dados_antes: null,
+            dados_depois: null
+          });
+
           fetchData();
         } catch (error: any) {
           if (isAdmin && usuario) {
@@ -720,6 +748,15 @@ export default function CompraBonificada() {
             .insert(dataToInsert);
 
           if (error) throw error;
+
+          await supabase.from('logs').insert({
+            usuario_id: usuario?.id,
+            usuario_nome: usuario?.nome || '',
+            acao: 'INSERT',
+            linha_afetada: `Compra Bonificada: ${excelData.length} registros (importação em lote)`,
+            dados_antes: null,
+            dados_depois: dataToInsert
+          });
 
           const parceiroNome = getParceiroNome(batchParceiroId);
           const programaNome = getProgramaNome(batchProgramaId);
