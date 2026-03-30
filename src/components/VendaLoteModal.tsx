@@ -1102,8 +1102,8 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
                   <input type="text" value={saldoAtual.toLocaleString('pt-BR')} readOnly className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Custo Médio</label>
-                  <input type="text" value={formatCurrency(custoMedio)} readOnly className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50" />
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Milheiro Médio Estoque</label>
+                  <input type="text" value={formatCurrency(custoMedioEstoque)} readOnly className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Lucro</label>
