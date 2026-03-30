@@ -373,6 +373,8 @@ export default function Estoque() {
                     const isEntrada = mov.tipo === 'Entrada' || mov.tipo === 'Crédito Clube' || mov.tipo === 'Crédito' || mov.tipo.includes('Entrada');
                     const isSaida = mov.tipo === 'Saída' || mov.tipo.includes('Saída');
                     const isVenda = isSaida && mov.localizador;
+                    const isCarrinho = mov.tipo === 'Entrada' && mov.observacao === 'Compra no Carrinho';
+                    const tipoLabel = isCarrinho ? 'Entrada - Compra Carrinho' : mov.tipo;
 
                     return (
                       <tr key={mov.id} className="hover:bg-slate-50">
@@ -384,14 +386,15 @@ export default function Estoque() {
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm">
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            isEntrada ? 'bg-green-100 text-green-700'
+                            isCarrinho ? 'bg-orange-100 text-orange-700'
+                            : isEntrada ? 'bg-green-100 text-green-700'
                             : isSaida ? 'bg-red-100 text-red-700'
                             : mov.tipo.includes('Transferência') || mov.tipo.includes('Transfer.')
                             ? 'bg-blue-100 text-blue-700'
                             : mov.tipo === 'Lembrete' ? 'bg-yellow-100 text-yellow-700'
                             : 'bg-slate-100 text-slate-700'
                           }`}>
-                            {mov.tipo}
+                            {tipoLabel}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-slate-900">{mov.parceiro_nome}</td>
