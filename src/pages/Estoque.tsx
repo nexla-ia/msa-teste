@@ -124,6 +124,7 @@ export default function Estoque() {
       .select(`
         id,
         created_at,
+        data_operacao,
         tipo,
         quantidade,
         valor_total,
@@ -134,7 +135,7 @@ export default function Estoque() {
         parceiros!estoque_movimentacoes_parceiro_id_fkey (nome_parceiro),
         programas_fidelidade!estoque_movimentacoes_programa_id_fkey (nome)
       `)
-      .order('created_at', { ascending: false })
+      .order('data_operacao', { ascending: false })
       .limit(200);
 
     if (error) {
@@ -176,7 +177,7 @@ export default function Estoque() {
 
       return {
         id: mov.id,
-        data: mov.created_at,
+        data: mov.data_operacao || mov.created_at,
         tipo: tipoFormatado,
         parceiro_nome: mov.parceiros?.nome_parceiro || 'N/A',
         programa_nome: mov.programas_fidelidade?.nome || 'N/A',
