@@ -110,6 +110,7 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
   const [saldoAtual, setSaldoAtual] = useState(0);
   const [custoMedio, setCustoMedio] = useState(0);
   const [custoMedioEstoque, setCustoMedioEstoque] = useState(0);
+  const [valorMilheiroLotes, setValorMilheiroLotes] = useState(0);
   const [lucroReal, setLucroReal] = useState(0);
   const [programas, setProgramas] = useState<Programa[]>([]);
   const [lotesParaVender, setLotesParaVender] = useState<CompraLote[]>([]);
@@ -568,6 +569,8 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
           return acc + (c.valor_milheiro || 0) * pts;
         }, 0) / totalPontosVenda
       : 0;
+
+    setValorMilheiroLotes(valorMilheiroMedio);
 
     const saldoRealPrograma = programaId ? (saldoPorPrograma[programaId] || 0) : 0;
 
@@ -1103,7 +1106,7 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Milheiro Médio Estoque</label>
-                  <input type="text" value={formatCurrency(custoMedioEstoque)} readOnly className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50" />
+                  <input type="text" value={formatCurrency(valorMilheiroLotes)} readOnly className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Lucro</label>
