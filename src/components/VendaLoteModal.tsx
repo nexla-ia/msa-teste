@@ -353,14 +353,20 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
           .select('referencia_id, valor_total, quantidade')
           .in('referencia_id', transferPontosIds)
           .eq('referencia_tabela', 'transferencia_pontos')
-          .eq('tipo', 'transferencia_entrada')
+          .in('tipo', ['transferencia_entrada', 'transferencia_bonus', 'bumerangue_retorno'])
           .eq('parceiro_id', id);
+        const totaisMapPontos: Record<string, { totalQtd: number; totalValor: number }> = {};
         for (const mov of (movsPontos || []) as any[]) {
           const qtd = Number(mov.quantidade) || 0;
           const val = Number(mov.valor_total) || 0;
           if (qtd > 0) {
-            custoMapPontos[mov.referencia_id] = (val / qtd) * 1000;
+            if (!totaisMapPontos[mov.referencia_id]) totaisMapPontos[mov.referencia_id] = { totalQtd: 0, totalValor: 0 };
+            totaisMapPontos[mov.referencia_id].totalQtd += qtd;
+            totaisMapPontos[mov.referencia_id].totalValor += val;
           }
+        }
+        for (const [refId, totais] of Object.entries(totaisMapPontos)) {
+          if (totais.totalQtd > 0) custoMapPontos[refId] = (totais.totalValor / totais.totalQtd) * 1000;
         }
       }
 
