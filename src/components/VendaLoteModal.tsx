@@ -680,33 +680,52 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
 
       if (vendaError) throw vendaError;
 
+      const vendaLotesInserts: any[] = [];
+
+      // Lotes de compra: debitar saldo e registrar (FIFO)
       const lotesCompras = lotesParaVender
         .filter(l => l.origem === 'compra')
         .sort((a, b) => new Date(a.data_entrada).getTime() - new Date(b.data_entrada).getTime());
       if (lotesCompras.length > 0) {
         let pontosRestantes = formData.quantidade_milhas;
-        const vendaLotesInserts = [];
         for (const lote of lotesCompras) {
           if (pontosRestantes <= 0) break;
           const saldoAtualLote = Number(lote.saldo_atual ?? lote.saldo_disponivel ?? 0);
           const deduzir = Math.min(saldoAtualLote, pontosRestantes);
           const novoSaldo = saldoAtualLote - deduzir;
           pontosRestantes -= deduzir;
-          await supabase
-            .from('compras')
-            .update({ saldo_atual: novoSaldo })
-            .eq('id', lote.id);
+          await supabase.from('compras').update({ saldo_atual: novoSaldo }).eq('id', lote.id);
           vendaLotesInserts.push({
             venda_id: vendaCriada.id,
             compra_id: lote.id,
+            referencia_id: lote.id,
+            referencia_tipo: 'compra',
+            tipo_origem: 'Compra de Pontos/Milhas',
             pontos_usados: deduzir,
             valor_milheiro: lote.valor_milheiro || 0,
             data_entrada: lote.data_entrada,
           });
         }
-        if (vendaLotesInserts.length > 0) {
-          await supabase.from('venda_lotes').insert(vendaLotesInserts);
-        }
+      }
+
+      // Lotes de transferência: apenas registrar (sem debitar saldo aqui)
+      const lotesTransferencias = lotesParaVender.filter(l => l.origem === 'transferencia');
+      for (const lote of lotesTransferencias) {
+        const pontos = lote.saldo_disponivel ?? lote.total_pontos ?? lote.pontos_milhas ?? 0;
+        vendaLotesInserts.push({
+          venda_id: vendaCriada.id,
+          compra_id: null,
+          referencia_id: lote.id,
+          referencia_tipo: lote.tipo === 'Transferência de Pontos' ? 'transferencia_pontos' : 'transferencia_pessoas',
+          tipo_origem: lote.transferencia_origem ? `Transferência de ${lote.transferencia_origem}` : lote.tipo,
+          pontos_usados: pontos,
+          valor_milheiro: lote.valor_milheiro || 0,
+          data_entrada: lote.data_entrada,
+        });
+      }
+
+      if (vendaLotesInserts.length > 0) {
+        await supabase.from('venda_lotes').insert(vendaLotesInserts);
       }
 
       if (formData.localizador) {
