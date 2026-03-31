@@ -454,7 +454,7 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
       }
 
       const todosLotes = [...comprasMapped, ...lotesTransferencias].sort(
-        (a, b) => new Date(b.data_entrada).getTime() - new Date(a.data_entrada).getTime()
+        (a, b) => new Date(a.data_entrada).getTime() - new Date(b.data_entrada).getTime()
       );
 
       setCompras(todosLotes);
@@ -674,7 +674,9 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
 
       if (vendaError) throw vendaError;
 
-      const lotesCompras = lotesParaVender.filter(l => l.origem === 'compra');
+      const lotesCompras = lotesParaVender
+        .filter(l => l.origem === 'compra')
+        .sort((a, b) => new Date(a.data_entrada).getTime() - new Date(b.data_entrada).getTime());
       if (lotesCompras.length > 0) {
         let pontosRestantes = formData.quantidade_milhas;
         for (const lote of lotesCompras) {
