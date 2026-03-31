@@ -109,7 +109,6 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
   const [error, setError] = useState('');
   const [saldoAtual, setSaldoAtual] = useState(0);
   const [custoMedio, setCustoMedio] = useState(0);
-  const [custoMedioEstoque, setCustoMedioEstoque] = useState(0);
   const [valorMilheiroLotes, setValorMilheiroLotes] = useState(0);
   const [lucroReal, setLucroReal] = useState(0);
   const [programas, setProgramas] = useState<Programa[]>([]);
@@ -177,17 +176,6 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
 
   useEffect(() => {
     setSelectedCompras(new Set());
-    if (parceiroId && programaFiltroId) {
-      supabase
-        .from('estoque_pontos')
-        .select('custo_medio')
-        .eq('parceiro_id', parceiroId)
-        .eq('programa_id', programaFiltroId)
-        .maybeSingle()
-        .then(({ data }) => setCustoMedioEstoque(Number(data?.custo_medio || 0)));
-    } else {
-      setCustoMedioEstoque(0);
-    }
   }, [programaFiltroId, parceiroId]);
 
   useEffect(() => {
@@ -212,7 +200,8 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
 
   useEffect(() => {
     if (formData.quantidade_milhas > 0 && formData.valor_milheiro > 0) {
-      const lucro = (formData.valor_milheiro - valorMilheiroLotes) * formData.quantidade_milhas / 1000;
+      const custoArredondado = Math.round(valorMilheiroLotes * 100) / 100;
+      const lucro = (formData.valor_milheiro - custoArredondado) * formData.quantidade_milhas / 1000;
       setLucroReal(Number(lucro.toFixed(2)));
     } else {
       setLucroReal(0);
@@ -230,7 +219,6 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
     setError('');
     setSaldoAtual(0);
     setCustoMedio(0);
-    setCustoMedioEstoque(0);
     setLucroReal(0);
     setRawValorMilheiro('');
     setRawTaxaEmbarque('');
