@@ -7,6 +7,7 @@ import { formatCurrency } from '../lib/formatters';
 interface VendaLote {
   id: string;
   pontos_usados: number;
+  pontos_total_lote: number | null;
   valor_milheiro: number;
   data_entrada: string;
   tipo_origem: string | null;
@@ -85,7 +86,7 @@ export default function VendaLocalizador() {
 
       const { data: lotes } = await supabase
         .from('venda_lotes')
-        .select('id, pontos_usados, valor_milheiro, data_entrada, tipo_origem')
+        .select('id, pontos_usados, pontos_total_lote, valor_milheiro, data_entrada, tipo_origem')
         .eq('venda_id', vendaId)
         .order('data_entrada', { ascending: true });
       setVendaLotes(lotes || []);
@@ -257,6 +258,7 @@ export default function VendaLocalizador() {
                   <tr className="border-b border-gray-100">
                     <th className="text-left px-5 py-2.5 text-xs font-medium text-gray-500">Data do Lote</th>
                     <th className="text-left px-5 py-2.5 text-xs font-medium text-gray-500">Origem</th>
+                    <th className="text-right px-5 py-2.5 text-xs font-medium text-gray-500">Total do Lote</th>
                     <th className="text-right px-5 py-2.5 text-xs font-medium text-gray-500">Pontos Usados</th>
                     <th className="text-right px-5 py-2.5 text-xs font-medium text-gray-500">Custo Médio (mil)</th>
                     <th className="text-right px-5 py-2.5 text-xs font-medium text-gray-500">Custo Total</th>
@@ -267,6 +269,7 @@ export default function VendaLocalizador() {
                     <tr key={lote.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                       <td className="px-5 py-2.5 text-gray-900">{formatDate(lote.data_entrada)}</td>
                       <td className="px-5 py-2.5 text-gray-600 text-xs">{lote.tipo_origem || '-'}</td>
+                      <td className="px-5 py-2.5 text-right text-gray-500">{lote.pontos_total_lote != null ? Number(lote.pontos_total_lote).toLocaleString('pt-BR') : '-'}</td>
                       <td className="px-5 py-2.5 text-right text-gray-900">{Number(lote.pontos_usados).toLocaleString('pt-BR')}</td>
                       <td className="px-5 py-2.5 text-right text-gray-900">{formatCurrency(lote.valor_milheiro)}</td>
                       <td className="px-5 py-2.5 text-right font-medium text-gray-900">
@@ -277,7 +280,7 @@ export default function VendaLocalizador() {
                 </tbody>
                 <tfoot>
                   <tr className="border-t border-gray-200 bg-gray-50">
-                    <td colSpan={2} className="px-5 py-2.5 text-xs font-semibold text-gray-600">Total</td>
+                    <td colSpan={3} className="px-5 py-2.5 text-xs font-semibold text-gray-600">Total</td>
                     <td className="px-5 py-2.5 text-right text-xs font-semibold text-gray-900">
                       {vendaLotes.reduce((a, l) => a + Number(l.pontos_usados), 0).toLocaleString('pt-BR')}
                     </td>

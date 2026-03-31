@@ -702,6 +702,7 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
             referencia_tipo: 'compra',
             tipo_origem: 'Compra de Pontos/Milhas',
             pontos_usados: deduzir,
+            pontos_total_lote: saldoAtualLote,
             valor_milheiro: lote.valor_milheiro || 0,
             data_entrada: lote.data_entrada,
           });
@@ -712,6 +713,7 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
       const lotesTransferencias = lotesParaVender.filter(l => l.origem === 'transferencia');
       for (const lote of lotesTransferencias) {
         const pontos = lote.saldo_disponivel ?? lote.total_pontos ?? lote.pontos_milhas ?? 0;
+        const totalLote = lote.total_pontos ?? lote.pontos_milhas ?? pontos;
         vendaLotesInserts.push({
           venda_id: vendaCriada.id,
           compra_id: null,
@@ -719,6 +721,7 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
           referencia_tipo: lote.tipo === 'Transferência de Pontos' ? 'transferencia_pontos' : 'transferencia_pessoas',
           tipo_origem: lote.transferencia_origem ? `Transferência de ${lote.transferencia_origem}` : lote.tipo,
           pontos_usados: pontos,
+          pontos_total_lote: totalLote,
           valor_milheiro: lote.valor_milheiro || 0,
           data_entrada: lote.data_entrada,
         });
