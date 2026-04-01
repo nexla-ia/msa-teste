@@ -479,7 +479,7 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
       }
 
       const todosLotes = [...comprasMapped, ...lotesTransferencias].sort(
-        (a, b) => new Date(a.data_entrada).getTime() - new Date(b.data_entrada).getTime()
+        (a, b) => new Date(b.data_entrada).getTime() - new Date(a.data_entrada).getTime()
       );
 
       setCompras(todosLotes);
