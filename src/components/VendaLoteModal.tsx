@@ -1125,7 +1125,25 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
                     value={formData.quantidade_milhas ? formData.quantidade_milhas.toLocaleString('pt-BR') : ''}
                     onChange={(e) => {
                       const value = e.target.value.replace(/\D/g, '');
-                      setFormData(prev => ({ ...prev, quantidade_milhas: Number(value) }));
+                      const qty = Number(value);
+                      setFormData(prev => ({ ...prev, quantidade_milhas: qty }));
+                      if (qty > 0 && lotesParaVender.length > 0) {
+                        const lotesOrdenados = [...lotesParaVender].sort(
+                          (a, b) => new Date(a.data_entrada).getTime() - new Date(b.data_entrada).getTime()
+                        );
+                        let restante = qty;
+                        let totalPts = 0;
+                        let totalValor = 0;
+                        for (const lote of lotesOrdenados) {
+                          if (restante <= 0) break;
+                          const disponivel = lote.saldo_disponivel ?? lote.total_pontos ?? lote.pontos_milhas;
+                          const consumir = Math.min(restante, disponivel);
+                          totalPts += consumir;
+                          totalValor += consumir * (lote.valor_milheiro || 0);
+                          restante -= consumir;
+                        }
+                        if (totalPts > 0) setValorMilheiroLotes(totalValor / totalPts);
+                      }
                     }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="0"
