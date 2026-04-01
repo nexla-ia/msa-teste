@@ -281,21 +281,37 @@ export default function Vendas() {
 
   const carregarSaldoECusto = async () => {
     try {
-      const { data, error } = await supabase
-        .from('estoque_pontos')
-        .select('saldo_atual, custo_medio')
-        .eq('parceiro_id', formData.parceiro_id)
-        .eq('programa_id', formData.programa_id)
-        .maybeSingle();
+      const [{ data, error }, { data: comprasAtivas }] = await Promise.all([
+        supabase
+          .from('estoque_pontos')
+          .select('saldo_atual, custo_medio')
+          .eq('parceiro_id', formData.parceiro_id)
+          .eq('programa_id', formData.programa_id)
+          .maybeSingle(),
+        supabase
+          .from('compras')
+          .select('saldo_atual, valor_milheiro')
+          .eq('parceiro_id', formData.parceiro_id)
+          .eq('programa_id', formData.programa_id)
+          .eq('status', 'Concluído')
+          .gt('saldo_atual', 0),
+      ]);
 
       if (error) throw error;
 
-      if (data) {
-        setSaldoAtual(Number(data.saldo_atual || 0));
-        setCustoMedio(Number(data.custo_medio || 0));
+      setSaldoAtual(data ? Number(data.saldo_atual || 0) : 0);
+
+      if (comprasAtivas && comprasAtivas.length > 0) {
+        let totalPts = 0;
+        let totalValor = 0;
+        for (const c of comprasAtivas as any[]) {
+          const pts = Number(c.saldo_atual || 0);
+          totalPts += pts;
+          totalValor += pts * Number(c.valor_milheiro || 0);
+        }
+        setCustoMedio(totalPts > 0 ? totalValor / totalPts : 0);
       } else {
-        setSaldoAtual(0);
-        setCustoMedio(0);
+        setCustoMedio(data ? Number(data.custo_medio || 0) : 0);
       }
     } catch (error) {
       console.error('Erro ao carregar saldo:', error);
