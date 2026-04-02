@@ -156,6 +156,7 @@ export default function Estoque() {
         programas_fidelidade!estoque_movimentacoes_programa_id_fkey (nome)
       `)
       .order('data_operacao', { ascending: false })
+      .order('created_at', { ascending: false })
       .limit(200);
 
     if (error) {
