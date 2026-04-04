@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, TrendingUp, Eye, Trash2, Layers } from 'lucide-react';
+import { Plus, TrendingUp, Eye, Trash2, Layers, AlertTriangle } from 'lucide-react';
 import { FilterBar } from '../components/FilterCombobox';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -108,6 +108,8 @@ export default function Vendas() {
   const [saldoAtual, setSaldoAtual] = useState<number>(0);
   const [custoMedio, setCustoMedio] = useState<number>(0);
   const [lucroReal, setLucroReal] = useState<number>(0);
+  const [lucroBase, setLucroBase] = useState<number>(0);
+  const [comissaoCalculada, setComissaoCalculada] = useState<number>(0);
   const [comissaoInfo, setComissaoInfo] = useState<{ tem_comissao: boolean; tipo: 'porcentagem' | 'real' | null; valor: number }>({ tem_comissao: false, tipo: null, valor: 0 });
   const [rawValorMilheiro, setRawValorMilheiro] = useState('');
   const [rawTaxaEmbarque, setRawTaxaEmbarque] = useState('');
@@ -200,7 +202,7 @@ export default function Vendas() {
 
   useEffect(() => {
     calcularLucro();
-  }, [formData.valor_total, formData.quantidade_milhas, custoMedio]);
+  }, [formData.valor_total, formData.quantidade_milhas, custoMedio, comissaoInfo, formData.custo_emissao]);
 
   useEffect(() => {
     if (formData.cartao_id) {
@@ -356,9 +358,22 @@ export default function Vendas() {
   const calcularLucro = () => {
     if (formData.quantidade_milhas > 0 && custoMedio > 0) {
       const custoTotal = (custoMedio * formData.quantidade_milhas) / 1000;
-      const lucro = formData.valor_total - custoTotal;
-      setLucroReal(Number(lucro.toFixed(2)));
+      const bruto = formData.valor_total - custoTotal;
+
+      let comissaoCalc = 0;
+      if (comissaoInfo.tem_comissao && comissaoInfo.tipo && comissaoInfo.valor > 0) {
+        comissaoCalc = comissaoInfo.tipo === 'porcentagem'
+          ? formData.valor_total * comissaoInfo.valor / 100
+          : comissaoInfo.valor;
+      }
+
+      const lucroLiquido = bruto - comissaoCalc - (formData.custo_emissao || 0);
+      setLucroBase(Number(bruto.toFixed(2)));
+      setComissaoCalculada(Number(comissaoCalc.toFixed(2)));
+      setLucroReal(Number(lucroLiquido.toFixed(2)));
     } else {
+      setLucroBase(0);
+      setComissaoCalculada(0);
       setLucroReal(0);
     }
   };
@@ -406,6 +421,8 @@ export default function Vendas() {
     setSaldoAtual(0);
     setCustoMedio(0);
     setLucroReal(0);
+    setLucroBase(0);
+    setComissaoCalculada(0);
     setComissaoInfo({ tem_comissao: false, tipo: null, valor: 0 });
     setError('');
     setRawValorMilheiro('');
@@ -978,7 +995,19 @@ export default function Vendas() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Lucro</label>
+                  <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-2">
+                    Lucro
+                    {(comissaoCalculada > 0 || formData.custo_emissao > 0) && (
+                      <span className="relative group inline-flex items-center">
+                        <AlertTriangle className="w-4 h-4 text-yellow-500 cursor-help" />
+                        <span className="absolute z-20 left-0 bottom-6 hidden group-hover:flex flex-col bg-gray-800 text-white text-xs rounded-lg p-2 w-60 shadow-lg gap-0.5 pointer-events-none">
+                          <span>Bruto: {formatCurrency(lucroBase)}</span>
+                          {comissaoCalculada > 0 && <span>Comissão (-): {formatCurrency(comissaoCalculada)}</span>}
+                          {formData.custo_emissao > 0 && <span>Custo Emissão (-): {formatCurrency(formData.custo_emissao)}</span>}
+                        </span>
+                      </span>
+                    )}
+                  </label>
                   <input
                     type="text"
                     value={formatCurrency(lucroReal)}

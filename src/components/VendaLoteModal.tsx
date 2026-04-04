@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { ChevronRight, ChevronLeft, CheckSquare, Square, ShoppingCart, ArrowLeftRight } from 'lucide-react';
+import { ChevronRight, ChevronLeft, CheckSquare, Square, ShoppingCart, ArrowLeftRight, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCurrency, formatNumberDisplay } from '../lib/formatters';
@@ -112,6 +112,9 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
   const [saldoAtual, setSaldoAtual] = useState(0);
   const [custoMedio, setCustoMedio] = useState(0);
   const [lucroReal, setLucroReal] = useState(0);
+  const [lucroBase, setLucroBase] = useState(0);
+  const [comissaoCalculada, setComissaoCalculada] = useState(0);
+  const [comissaoInfo, setComissaoInfo] = useState<{ tem_comissao: boolean; tipo: 'porcentagem' | 'real' | null; valor: number }>({ tem_comissao: false, tipo: null, valor: 0 });
   const [programas, setProgramas] = useState<Programa[]>([]);
   const [lotesParaVender, setLotesParaVender] = useState<CompraLote[]>([]);
   const [rawValorMilheiro, setRawValorMilheiro] = useState('');
@@ -222,12 +225,25 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
   useEffect(() => {
     if (formData.quantidade_milhas > 0 && formData.valor_milheiro > 0) {
       const custoArredondado = Math.round(valorMilheiroLotes * 100) / 100;
-      const lucro = (formData.valor_milheiro - custoArredondado) * formData.quantidade_milhas / 1000;
-      setLucroReal(Number(lucro.toFixed(2)));
+      const bruto = (formData.valor_milheiro - custoArredondado) * formData.quantidade_milhas / 1000;
+
+      let comissaoCalc = 0;
+      if (comissaoInfo.tem_comissao && comissaoInfo.tipo && comissaoInfo.valor > 0) {
+        comissaoCalc = comissaoInfo.tipo === 'porcentagem'
+          ? formData.valor_total * comissaoInfo.valor / 100
+          : comissaoInfo.valor;
+      }
+
+      const lucroLiquido = bruto - comissaoCalc - (formData.custo_emissao || 0);
+      setLucroBase(Number(bruto.toFixed(2)));
+      setComissaoCalculada(Number(comissaoCalc.toFixed(2)));
+      setLucroReal(Number(lucroLiquido.toFixed(2)));
     } else {
+      setLucroBase(0);
+      setComissaoCalculada(0);
       setLucroReal(0);
     }
-  }, [formData.valor_milheiro, formData.quantidade_milhas, valorMilheiroLotes]);
+  }, [formData.valor_milheiro, formData.quantidade_milhas, valorMilheiroLotes, comissaoInfo, formData.custo_emissao, formData.valor_total]);
 
   const resetAll = () => {
     setStep(1);
@@ -241,6 +257,9 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
     setSaldoAtual(0);
     setCustoMedio(0);
     setLucroReal(0);
+    setLucroBase(0);
+    setComissaoCalculada(0);
+    setComissaoInfo({ tem_comissao: false, tipo: null, valor: 0 });
     setRawValorMilheiro('');
     setRawTaxaEmbarque('');
     setRawTaxaResgate('');
@@ -280,10 +299,7 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
       emissor: usuario?.nome || '',
       observacao: '',
       localizador: '',
-      forma_pagamento_venda: '',
       data_vencimento_venda: '',
-      cartao_venda_id: '',
-      conta_bancaria_venda_id: '',
     });
   };
 
@@ -512,7 +528,7 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
   };
 
   const carregarSaldoECusto = async () => {
-    const [{ data }, { data: comprasAtivas }] = await Promise.all([
+    const [{ data }, { data: comprasAtivas }, { data: programaClube }] = await Promise.all([
       supabase
         .from('estoque_pontos')
         .select('saldo_atual, custo_medio')
@@ -527,6 +543,12 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
         .eq('status', 'Concluído')
         .gt('saldo_atual', 0)
         .neq('observacao', 'Compra no Carrinho'),
+      supabase
+        .from('programas_clubes')
+        .select('tem_comissao, comissao_tipo, comissao_valor')
+        .eq('parceiro_id', formData.parceiro_id)
+        .eq('programa_id', formData.programa_id)
+        .maybeSingle(),
     ]);
 
     setSaldoAtual(data ? Number(data.saldo_atual || 0) : 0);
@@ -542,6 +564,16 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
       setCustoMedio(totalPts > 0 ? totalValor / totalPts : 0);
     } else {
       setCustoMedio(data ? Number(data.custo_medio || 0) : 0);
+    }
+
+    if (programaClube && programaClube.tem_comissao) {
+      setComissaoInfo({
+        tem_comissao: true,
+        tipo: programaClube.comissao_tipo || null,
+        valor: Number(programaClube.comissao_valor || 0),
+      });
+    } else {
+      setComissaoInfo({ tem_comissao: false, tipo: null, valor: 0 });
     }
   };
 
@@ -1185,7 +1217,19 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
                   <input type="text" value={formatCurrency(valorMilheiroLotes)} readOnly className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Lucro</label>
+                  <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-2">
+                    Lucro
+                    {(comissaoCalculada > 0 || formData.custo_emissao > 0) && (
+                      <span className="relative group inline-flex items-center">
+                        <AlertTriangle className="w-4 h-4 text-yellow-500 cursor-help" />
+                        <span className="absolute z-20 left-0 bottom-6 hidden group-hover:flex flex-col bg-gray-800 text-white text-xs rounded-lg p-2 w-60 shadow-lg gap-0.5 pointer-events-none">
+                          <span>Bruto: {formatCurrency(lucroBase)}</span>
+                          {comissaoCalculada > 0 && <span>Comissão (-): {formatCurrency(comissaoCalculada)}</span>}
+                          {formData.custo_emissao > 0 && <span>Custo Emissão (-): {formatCurrency(formData.custo_emissao)}</span>}
+                        </span>
+                      </span>
+                    )}
+                  </label>
                   <input type="text" value={formatCurrency(lucroReal)} readOnly className="w-full px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-green-700 font-medium" />
                 </div>
               </div>
