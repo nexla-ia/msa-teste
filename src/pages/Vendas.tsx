@@ -51,6 +51,16 @@ interface Usuario {
   nome: string;
 }
 
+interface ContaBancaria {
+  id: string;
+  nome_banco: string;
+}
+
+interface FormaPagamento {
+  id: string;
+  nome: string;
+}
+
 interface FormData {
   parceiro_id: string;
   cliente_id: string;
@@ -85,6 +95,10 @@ interface FormData {
   emissor: string;
   observacao: string;
   localizador: string;
+  forma_pagamento_venda: string;
+  data_vencimento_venda: string;
+  cartao_venda_id: string;
+  conta_bancaria_venda_id: string;
 }
 
 export default function Vendas() {
@@ -96,6 +110,8 @@ export default function Vendas() {
   const [programas, setProgramas] = useState<Programa[]>([]);
   const [cartoes, setCartoes] = useState<Cartao[]>([]);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [formasPagamento, setFormasPagamento] = useState<FormaPagamento[]>([]);
+  const [contasBancarias, setContasBancarias] = useState<ContaBancaria[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [filtroParceiro, setFiltroParceiro] = useState('');
@@ -158,6 +174,10 @@ export default function Vendas() {
     emissor: usuario?.nome || '',
     observacao: '',
     localizador: '',
+    forma_pagamento_venda: '',
+    data_vencimento_venda: '',
+    cartao_venda_id: '',
+    conta_bancaria_venda_id: '',
   });
 
   useEffect(() => {
@@ -222,7 +242,7 @@ export default function Vendas() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [vendasRes, parceirosRes, clientesRes, cartoesRes, usuariosRes] = await Promise.all([
+      const [vendasRes, parceirosRes, clientesRes, cartoesRes, usuariosRes, formasPagRes, contasRes] = await Promise.all([
         supabase
           .from('vendas')
           .select(`
@@ -237,6 +257,8 @@ export default function Vendas() {
         supabase.from('clientes').select('id, nome_cliente').order('nome_cliente'),
         supabase.from('cartoes_credito').select('id, cartao').order('cartao'),
         supabase.from('usuarios').select('id, nome').order('nome'),
+        supabase.from('formas_pagamento').select('id, nome').eq('ativo', true).order('ordem', { ascending: true }),
+        supabase.from('contas_bancarias').select('id, nome_banco').order('nome_banco'),
       ]);
 
       if (vendasRes.data) setVendas(vendasRes.data);
@@ -244,6 +266,8 @@ export default function Vendas() {
       if (clientesRes.data) setClientes(clientesRes.data);
       if (cartoesRes.data) setCartoes(cartoesRes.data);
       if (usuariosRes.data) setUsuarios(usuariosRes.data);
+      if (formasPagRes.data) setFormasPagamento(formasPagRes.data);
+      if (contasRes.data) setContasBancarias(contasRes.data);
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
     } finally {
@@ -531,6 +555,11 @@ export default function Vendas() {
         throw new Error('Valor do milheiro deve ser maior que zero.');
       }
 
+      const precisaDataVencimento = formData.forma_pagamento_venda && formData.forma_pagamento_venda !== 'Não registrar no fluxo de caixa';
+      if (precisaDataVencimento && !formData.data_vencimento_venda) {
+        throw new Error('Informe a data de vencimento para o recebimento da venda.');
+      }
+
       const vendaData = {
         parceiro_id: formData.parceiro_id,
         cliente_id: formData.cliente_id || null,
@@ -581,6 +610,27 @@ export default function Vendas() {
           }]);
 
         if (localizadorError) throw localizadorError;
+      }
+
+      // Criar conta a receber se forma de pagamento informada
+      if (formData.forma_pagamento_venda && formData.forma_pagamento_venda !== 'Não registrar no fluxo de caixa') {
+        const valorTotalVenda = calcularValorTotalVendas();
+        const contaReceberData: any = {
+          venda_id: vendaCriada.id,
+          origem_tipo: 'venda',
+          origem_id: vendaCriada.id,
+          data_vencimento: formData.data_vencimento_venda,
+          valor_parcela: valorTotalVenda,
+          numero_parcela: 1,
+          total_parcelas: 1,
+          forma_pagamento: formData.forma_pagamento_venda,
+          status_pagamento: 'pendente',
+        };
+        if (formData.cartao_venda_id) contaReceberData.cartao_id = formData.cartao_venda_id;
+        if (formData.conta_bancaria_venda_id) contaReceberData.conta_bancaria_id = formData.conta_bancaria_venda_id;
+
+        const { error: contaError } = await supabase.from('contas_receber').insert([contaReceberData]);
+        if (contaError) throw contaError;
       }
 
       await supabase.from('logs').insert({
@@ -1350,6 +1400,82 @@ export default function Vendas() {
                     ))}
                   </select>
                 </div>
+              </div>
+            </div>
+
+            <div className="border-b border-gray-200 pb-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Pagamento / Contas a Receber</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Forma de Pagamento
+                  </label>
+                  <select
+                    value={formData.forma_pagamento_venda}
+                    onChange={(e) => setFormData(prev => ({
+                      ...prev,
+                      forma_pagamento_venda: e.target.value,
+                      data_vencimento_venda: '',
+                      cartao_venda_id: '',
+                      conta_bancaria_venda_id: '',
+                    }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Não registrar no fluxo de caixa</option>
+                    {formasPagamento.map(f => (
+                      <option key={f.id} value={f.nome}>{f.nome}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Data de Vencimento
+                    {formData.forma_pagamento_venda && formData.forma_pagamento_venda !== 'Não registrar no fluxo de caixa' && (
+                      <span className="text-red-500 ml-1">*</span>
+                    )}
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.data_vencimento_venda}
+                    onChange={(e) => setFormData(prev => ({ ...prev, data_vencimento_venda: e.target.value }))}
+                    required={!!(formData.forma_pagamento_venda && formData.forma_pagamento_venda !== 'Não registrar no fluxo de caixa')}
+                    disabled={!formData.forma_pagamento_venda || formData.forma_pagamento_venda === 'Não registrar no fluxo de caixa'}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
+                  />
+                </div>
+
+                {(formData.forma_pagamento_venda === 'Crédito' || formData.forma_pagamento_venda === 'Débito') && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Cartão</label>
+                    <select
+                      value={formData.cartao_venda_id}
+                      onChange={(e) => setFormData(prev => ({ ...prev, cartao_venda_id: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Selecione o cartão</option>
+                      {cartoes.map(c => (
+                        <option key={c.id} value={c.id}>{c.cartao}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {(formData.forma_pagamento_venda === 'PIX' || formData.forma_pagamento_venda === 'Dinheiro' || formData.forma_pagamento_venda === 'Transferência') && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Conta Bancária</label>
+                    <select
+                      value={formData.conta_bancaria_venda_id}
+                      onChange={(e) => setFormData(prev => ({ ...prev, conta_bancaria_venda_id: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Selecione a conta</option>
+                      {contasBancarias.map(c => (
+                        <option key={c.id} value={c.id}>{c.nome_banco}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
 
