@@ -986,25 +986,20 @@ export default function Vendas() {
                 </div>
 
                 <div>
-                  <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-2">
-                    Lucro
-                    {(comissaoCalculada > 0 || custoEmissaoCalc > 0) && (
-                      <span className="relative group inline-flex items-center">
-                        <AlertTriangle className="w-4 h-4 text-yellow-500 cursor-help" />
-                        <span className="absolute z-20 left-0 bottom-6 hidden group-hover:flex flex-col bg-gray-800 text-white text-xs rounded-lg p-2 w-60 shadow-lg gap-0.5 pointer-events-none">
-                          <span>Bruto: {formatCurrency(lucroBase)}</span>
-                          {comissaoCalculada > 0 && <span>Comissão (-): {formatCurrency(comissaoCalculada)}</span>}
-                          {custoEmissaoCalc > 0 && <span>Custo Emissão (-): {formatCurrency(custoEmissaoCalc)}</span>}
-                        </span>
-                      </span>
-                    )}
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Lucro</label>
                   <input
                     type="text"
                     value={formatCurrency(lucroReal)}
                     readOnly
                     className="w-full px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-green-700 font-medium"
                   />
+                  {(comissaoCalculada > 0 || custoEmissaoCalc > 0) && (
+                    <div className="mt-1 text-xs text-gray-500 space-y-0.5">
+                      <div>Bruto: {formatCurrency(lucroBase)}</div>
+                      {comissaoCalculada > 0 && <div>Comissão (-): {formatCurrency(comissaoCalculada)}</div>}
+                      {custoEmissaoCalc > 0 && <div>Custo Emissão (-): {formatCurrency(custoEmissaoCalc)}</div>}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
