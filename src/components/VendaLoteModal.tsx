@@ -111,9 +111,6 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
   const [error, setError] = useState('');
   const [saldoAtual, setSaldoAtual] = useState(0);
   const [custoMedio, setCustoMedio] = useState(0);
-  const [lucroReal, setLucroReal] = useState(0);
-  const [lucroBase, setLucroBase] = useState(0);
-  const [comissaoCalculada, setComissaoCalculada] = useState(0);
   const [comissaoInfo, setComissaoInfo] = useState<{ tem_comissao: boolean; tipo: 'porcentagem' | 'real' | null; valor: number }>({ tem_comissao: false, tipo: null, valor: 0 });
   const [programas, setProgramas] = useState<Programa[]>([]);
   const [lotesParaVender, setLotesParaVender] = useState<CompraLote[]>([]);
@@ -222,27 +219,23 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
     return totalPts > 0 ? totalValor / totalPts : 0;
   }, [formData.quantidade_milhas, lotesParaVender]);
 
-  useEffect(() => {
+  const { lucroReal, lucroBase, comissaoCalculada } = useMemo(() => {
     if (formData.quantidade_milhas > 0 && formData.valor_milheiro > 0) {
       const custoArredondado = Math.round(valorMilheiroLotes * 100) / 100;
       const bruto = (formData.valor_milheiro - custoArredondado) * formData.quantidade_milhas / 1000;
-
       let comissaoCalc = 0;
       if (comissaoInfo.tem_comissao && comissaoInfo.tipo && comissaoInfo.valor > 0) {
         comissaoCalc = comissaoInfo.tipo === 'porcentagem'
           ? formData.valor_total * comissaoInfo.valor / 100
           : comissaoInfo.valor;
       }
-
-      const lucroLiquido = bruto - comissaoCalc - (formData.custo_emissao || 0);
-      setLucroBase(Number(bruto.toFixed(2)));
-      setComissaoCalculada(Number(comissaoCalc.toFixed(2)));
-      setLucroReal(Number(lucroLiquido.toFixed(2)));
-    } else {
-      setLucroBase(0);
-      setComissaoCalculada(0);
-      setLucroReal(0);
+      return {
+        lucroBase: Number(bruto.toFixed(2)),
+        comissaoCalculada: Number(comissaoCalc.toFixed(2)),
+        lucroReal: Number((bruto - comissaoCalc - (formData.custo_emissao || 0)).toFixed(2)),
+      };
     }
+    return { lucroBase: 0, comissaoCalculada: 0, lucroReal: 0 };
   }, [formData.valor_milheiro, formData.quantidade_milhas, valorMilheiroLotes, comissaoInfo, formData.custo_emissao, formData.valor_total]);
 
   const resetAll = () => {
@@ -256,9 +249,6 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
     setError('');
     setSaldoAtual(0);
     setCustoMedio(0);
-    setLucroReal(0);
-    setLucroBase(0);
-    setComissaoCalculada(0);
     setComissaoInfo({ tem_comissao: false, tipo: null, valor: 0 });
     setRawValorMilheiro('');
     setRawTaxaEmbarque('');

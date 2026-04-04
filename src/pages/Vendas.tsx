@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Plus, TrendingUp, Eye, Trash2, Layers, AlertTriangle } from 'lucide-react';
 import { FilterBar } from '../components/FilterCombobox';
 import { supabase } from '../lib/supabase';
@@ -107,9 +107,6 @@ export default function Vendas() {
   const [showLoteModal, setShowLoteModal] = useState(false);
   const [saldoAtual, setSaldoAtual] = useState<number>(0);
   const [custoMedio, setCustoMedio] = useState<number>(0);
-  const [lucroReal, setLucroReal] = useState<number>(0);
-  const [lucroBase, setLucroBase] = useState<number>(0);
-  const [comissaoCalculada, setComissaoCalculada] = useState<number>(0);
   const [comissaoInfo, setComissaoInfo] = useState<{ tem_comissao: boolean; tipo: 'porcentagem' | 'real' | null; valor: number }>({ tem_comissao: false, tipo: null, valor: 0 });
   const [rawValorMilheiro, setRawValorMilheiro] = useState('');
   const [rawTaxaEmbarque, setRawTaxaEmbarque] = useState('');
@@ -164,6 +161,25 @@ export default function Vendas() {
     data_vencimento_venda: '',
   });
 
+  const { lucroReal, lucroBase, comissaoCalculada } = useMemo(() => {
+    if (formData.quantidade_milhas > 0 && custoMedio > 0) {
+      const custoTotal = (custoMedio * formData.quantidade_milhas) / 1000;
+      const bruto = formData.valor_total - custoTotal;
+      let comissaoCalc = 0;
+      if (comissaoInfo.tem_comissao && comissaoInfo.tipo && comissaoInfo.valor > 0) {
+        comissaoCalc = comissaoInfo.tipo === 'porcentagem'
+          ? formData.valor_total * comissaoInfo.valor / 100
+          : comissaoInfo.valor;
+      }
+      return {
+        lucroBase: Number(bruto.toFixed(2)),
+        comissaoCalculada: Number(comissaoCalc.toFixed(2)),
+        lucroReal: Number((bruto - comissaoCalc - (formData.custo_emissao || 0)).toFixed(2)),
+      };
+    }
+    return { lucroBase: 0, comissaoCalculada: 0, lucroReal: 0 };
+  }, [formData.quantidade_milhas, formData.valor_total, formData.custo_emissao, custoMedio, comissaoInfo]);
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -199,10 +215,6 @@ export default function Vendas() {
     setFormData(prev => ({ ...prev, custo_emissao: custoFormatado }));
     setRawCustoEmissao(custoFormatado > 0 ? formatNumberDisplay(custoFormatado) : '');
   }, [formData.quantidade_milhas]);
-
-  useEffect(() => {
-    calcularLucro();
-  }, [formData.valor_total, formData.quantidade_milhas, custoMedio, comissaoInfo, formData.custo_emissao]);
 
   useEffect(() => {
     if (formData.cartao_id) {
@@ -355,29 +367,6 @@ export default function Vendas() {
     }
   };
 
-  const calcularLucro = () => {
-    if (formData.quantidade_milhas > 0 && custoMedio > 0) {
-      const custoTotal = (custoMedio * formData.quantidade_milhas) / 1000;
-      const bruto = formData.valor_total - custoTotal;
-
-      let comissaoCalc = 0;
-      if (comissaoInfo.tem_comissao && comissaoInfo.tipo && comissaoInfo.valor > 0) {
-        comissaoCalc = comissaoInfo.tipo === 'porcentagem'
-          ? formData.valor_total * comissaoInfo.valor / 100
-          : comissaoInfo.valor;
-      }
-
-      const lucroLiquido = bruto - comissaoCalc - (formData.custo_emissao || 0);
-      setLucroBase(Number(bruto.toFixed(2)));
-      setComissaoCalculada(Number(comissaoCalc.toFixed(2)));
-      setLucroReal(Number(lucroLiquido.toFixed(2)));
-    } else {
-      setLucroBase(0);
-      setComissaoCalculada(0);
-      setLucroReal(0);
-    }
-  };
-
   const calcularValorTotalVendas = () => {
     return formData.valor_total + formData.taxa_embarque + formData.taxa_resgate + formData.taxa_bagagem;
   };
@@ -420,9 +409,6 @@ export default function Vendas() {
     });
     setSaldoAtual(0);
     setCustoMedio(0);
-    setLucroReal(0);
-    setLucroBase(0);
-    setComissaoCalculada(0);
     setComissaoInfo({ tem_comissao: false, tipo: null, valor: 0 });
     setError('');
     setRawValorMilheiro('');
