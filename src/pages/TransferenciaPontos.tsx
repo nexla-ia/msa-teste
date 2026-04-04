@@ -602,20 +602,46 @@ export default function TransferenciaPontos() {
       }
 
       if (editingItem) {
-        const { error } = await supabase
-          .from('transferencia_pontos')
-          .update(dataToSave)
-          .eq('id', editingItem.id);
-        if (error) throw error;
+        // Reverter estoque da transferência antiga
+        const { data: revertResult, error: revertError } = await supabase.rpc(
+          'reverter_transferencia_pontos',
+          { p_transfer_id: editingItem.id }
+        );
+        if (revertError) throw new Error(`Erro ao reverter estoque: ${revertError.message}`);
 
+        // Deletar registro antigo
+        const { error: deleteError } = await supabase
+          .from('transferencia_pontos')
+          .delete()
+          .eq('id', editingItem.id);
+        if (deleteError) throw deleteError;
+
+        // Inserir novo registro com valores corrigidos (triggers disparam normalmente)
+        // Não recriar compra no carrinho — já existe da transferência original
+        const newDataToSave = { ...dataToSave };
+        delete newDataToSave.id;
+        newDataToSave.realizar_compra_carrinho = false;
+        delete newDataToSave.compra_quantidade;
+        delete newDataToSave.compra_valor_total;
+
+        const { error: insertError } = await supabase
+          .from('transferencia_pontos')
+          .insert([newDataToSave]);
+        if (insertError) throw insertError;
+
+        const warnings: string[] = revertResult?.warnings || [];
         await supabase.from('logs').insert({
           usuario_id: usuario?.id,
           usuario_nome: usuario?.nome || '',
           acao: 'UPDATE',
-          linha_afetada: `Transferência de Pontos: ${formData.origem_quantidade} pts`,
-          dados_antes: null,
-          dados_depois: formData
+          linha_afetada: `Transferência de Pontos editada: ${formData.origem_quantidade} pts (id anterior: ${editingItem.id})`,
+          dados_antes: editingItem,
+          dados_depois: newDataToSave
         });
+
+        if (warnings.length > 0) {
+          console.warn('Avisos de reversão parcial:', warnings);
+        }
       } else {
         const { error: insertError } = await supabase
           .from('transferencia_pontos')
@@ -695,14 +721,21 @@ export default function TransferenciaPontos() {
       isOpen: true,
       type: 'confirm',
       title: 'Confirmar Exclusão',
-      message: 'Tem certeza que deseja excluir esta transferência?',
+      message: 'Excluir esta transferência reverterá as alterações no estoque (origem e destino). Se os pontos do destino já foram vendidos, a reversão será parcial. Deseja continuar?',
       onConfirm: async () => {
         try {
+          // 1. Reverter estoque e contas_receber
+          const { data: revertResult, error: revertError } = await supabase.rpc(
+            'reverter_transferencia_pontos',
+            { p_transfer_id: id }
+          );
+          if (revertError) throw new Error(`Erro ao reverter estoque: ${revertError.message}`);
+
+          // 2. Deletar o registro
           const { error } = await supabase
             .from('transferencia_pontos')
             .delete()
             .eq('id', id);
-
           if (error) throw error;
 
           await supabase.from('logs').insert({
@@ -715,11 +748,17 @@ export default function TransferenciaPontos() {
           });
 
           fetchData();
+
+          const warnings: string[] = revertResult?.warnings || [];
+          const mensagem = warnings.length > 0
+            ? `Transferência excluída. Aviso de reversão parcial:\n${warnings.join('\n')}`
+            : 'Transferência excluída e estoque revertido com sucesso!';
+
           setDialogConfig({
             isOpen: true,
-            type: 'success',
+            type: warnings.length > 0 ? 'warning' : 'success',
             title: 'Sucesso',
-            message: 'Transferência excluída com sucesso!'
+            message: mensagem
           });
         } catch (error: any) {
           console.error('Erro ao excluir:', error);
@@ -865,18 +904,24 @@ export default function TransferenciaPontos() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{trans.destino_quantidade?.toLocaleString('pt-BR')}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">1:{trans.origem_paridade}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        onClick={() => handleEdit(trans)}
-                        className="text-blue-600 hover:text-blue-900 mr-3"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(trans.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {usuario?.nivel_acesso === 'ADM' && (
+                        <>
+                          <button
+                            onClick={() => handleEdit(trans)}
+                            className="text-blue-600 hover:text-blue-900 mr-3"
+                            title="Editar transferência"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(trans.id)}
+                            className="text-red-600 hover:text-red-900"
+                            title="Excluir transferência"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))
