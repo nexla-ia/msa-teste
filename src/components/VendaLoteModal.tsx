@@ -50,6 +50,16 @@ interface Programa {
   nome: string;
 }
 
+interface ContaBancaria {
+  id: string;
+  nome_banco: string;
+}
+
+interface FormaPagamento {
+  id: string;
+  nome: string;
+}
+
 interface VendaLoteFormData {
   parceiro_id: string;
   cliente_id: string;
@@ -84,6 +94,10 @@ interface VendaLoteFormData {
   emissor: string;
   observacao: string;
   localizador: string;
+  forma_pagamento_venda: string;
+  data_vencimento_venda: string;
+  cartao_venda_id: string;
+  conta_bancaria_venda_id: string;
 }
 
 interface Props {
@@ -113,6 +127,8 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
   const [lucroReal, setLucroReal] = useState(0);
   const [programas, setProgramas] = useState<Programa[]>([]);
   const [lotesParaVender, setLotesParaVender] = useState<CompraLote[]>([]);
+  const [formasPagamento, setFormasPagamento] = useState<FormaPagamento[]>([]);
+  const [contasBancarias, setContasBancarias] = useState<ContaBancaria[]>([]);
 
   const [rawValorMilheiro, setRawValorMilheiro] = useState('');
   const [rawTaxaEmbarque, setRawTaxaEmbarque] = useState('');
@@ -154,6 +170,10 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
     emissor: usuario?.nome || '',
     observacao: '',
     localizador: '',
+    forma_pagamento_venda: '',
+    data_vencimento_venda: '',
+    cartao_venda_id: '',
+    conta_bancaria_venda_id: '',
   });
 
   useEffect(() => {
@@ -161,6 +181,16 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
       resetAll();
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    Promise.all([
+      supabase.from('formas_pagamento').select('id, nome').eq('ativo', true).order('ordem', { ascending: true }),
+      supabase.from('contas_bancarias').select('id, nome_banco').order('nome_banco'),
+    ]).then(([fp, cb]) => {
+      if (fp.data) setFormasPagamento(fp.data);
+      if (cb.data) setContasBancarias(cb.data);
+    });
+  }, []);
 
   useEffect(() => {
     if (parceiroId) {
@@ -279,6 +309,10 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
       emissor: usuario?.nome || '',
       observacao: '',
       localizador: '',
+      forma_pagamento_venda: '',
+      data_vencimento_venda: '',
+      cartao_venda_id: '',
+      conta_bancaria_venda_id: '',
     });
   };
 
@@ -667,6 +701,11 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
       if (formData.quantidade_milhas <= 0) throw new Error('Quantidade de milhas deve ser maior que zero.');
       if (formData.valor_milheiro <= 0) throw new Error('Valor do milheiro deve ser maior que zero.');
 
+      const precisaDataVencimento = formData.forma_pagamento_venda && formData.forma_pagamento_venda !== 'Não registrar no fluxo de caixa';
+      if (precisaDataVencimento && !formData.data_vencimento_venda) {
+        throw new Error('Informe a data de vencimento para o recebimento da venda.');
+      }
+
       const vendaData = {
         parceiro_id: formData.parceiro_id,
         cliente_id: formData.cliente_id || null,
@@ -764,6 +803,26 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
           codigo_localizador: formData.localizador,
           status: 'emitido',
         }]);
+      }
+
+      // Criar conta a receber se forma de pagamento informada
+      if (formData.forma_pagamento_venda && formData.forma_pagamento_venda !== 'Não registrar no fluxo de caixa') {
+        const valorTotalVenda = calcularValorTotalVendas();
+        const contaReceberData: any = {
+          venda_id: vendaCriada.id,
+          origem_tipo: 'venda',
+          origem_id: vendaCriada.id,
+          data_vencimento: formData.data_vencimento_venda,
+          valor_parcela: valorTotalVenda,
+          numero_parcela: 1,
+          total_parcelas: 1,
+          forma_pagamento: formData.forma_pagamento_venda,
+          status_pagamento: 'pendente',
+        };
+        if (formData.cartao_venda_id) contaReceberData.cartao_id = formData.cartao_venda_id;
+        if (formData.conta_bancaria_venda_id) contaReceberData.conta_bancaria_id = formData.conta_bancaria_venda_id;
+        const { error: contaError } = await supabase.from('contas_receber').insert([contaReceberData]);
+        if (contaError) throw contaError;
       }
 
       onSuccess();
@@ -1376,6 +1435,80 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
                     {usuarios.map(u => <option key={u.id} value={u.nome}>{u.nome}</option>)}
                   </select>
                 </div>
+              </div>
+            </div>
+
+            <div className="border-b border-gray-200 pb-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Pagamento / Contas a Receber</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Forma de Pagamento</label>
+                  <select
+                    value={formData.forma_pagamento_venda}
+                    onChange={(e) => setFormData(prev => ({
+                      ...prev,
+                      forma_pagamento_venda: e.target.value,
+                      data_vencimento_venda: '',
+                      cartao_venda_id: '',
+                      conta_bancaria_venda_id: '',
+                    }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Não registrar no fluxo de caixa</option>
+                    {formasPagamento.map(f => (
+                      <option key={f.id} value={f.nome}>{f.nome}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Data de Vencimento
+                    {formData.forma_pagamento_venda && formData.forma_pagamento_venda !== 'Não registrar no fluxo de caixa' && (
+                      <span className="text-red-500 ml-1">*</span>
+                    )}
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.data_vencimento_venda}
+                    onChange={(e) => setFormData(prev => ({ ...prev, data_vencimento_venda: e.target.value }))}
+                    required={!!(formData.forma_pagamento_venda && formData.forma_pagamento_venda !== 'Não registrar no fluxo de caixa')}
+                    disabled={!formData.forma_pagamento_venda || formData.forma_pagamento_venda === 'Não registrar no fluxo de caixa'}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
+                  />
+                </div>
+
+                {(formData.forma_pagamento_venda === 'Crédito' || formData.forma_pagamento_venda === 'Débito') && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Cartão</label>
+                    <select
+                      value={formData.cartao_venda_id}
+                      onChange={(e) => setFormData(prev => ({ ...prev, cartao_venda_id: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Selecione o cartão</option>
+                      {cartoes.map(c => (
+                        <option key={c.id} value={c.id}>{c.cartao}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {(formData.forma_pagamento_venda === 'PIX' || formData.forma_pagamento_venda === 'Dinheiro' || formData.forma_pagamento_venda === 'Transferência') && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Conta Bancária</label>
+                    <select
+                      value={formData.conta_bancaria_venda_id}
+                      onChange={(e) => setFormData(prev => ({ ...prev, conta_bancaria_venda_id: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Selecione a conta</option>
+                      {contasBancarias.map(c => (
+                        <option key={c.id} value={c.id}>{c.nome_banco}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
 
