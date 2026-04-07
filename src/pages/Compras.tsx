@@ -457,8 +457,10 @@ export default function Compras() {
           status = 'Pendente';
         }
 
+        // Remover campos de join que não existem como colunas na tabela
+        const { parceiros: _p, programas_fidelidade: _pf, ...formDataLimpo } = formData as any;
         const baseData = {
-          ...formData,
+          ...formDataLimpo,
           created_by: usuario?.id,
           updated_at: new Date().toISOString(),
           data_vencimento_manual: formData.data_vencimento_manual || null
