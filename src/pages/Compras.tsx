@@ -200,14 +200,16 @@ export default function Compras() {
   }, [formData.parceiro_id, formData.programa_id]);
 
   useEffect(() => {
-    if (formData.tipo_valor === 'VT' && formData.valor_total && formData.pontos_milhas && formData.pontos_milhas > 0) {
-      const valorMilheiro = (formData.valor_total / formData.pontos_milhas) * 1000;
+    // Usar total_pontos (pontos + bônus) para calcular o custo real por milha
+    const totalPts = (formData.pontos_milhas || 0) + (formData.bonus || 0);
+    if (formData.tipo_valor === 'VT' && formData.valor_total && totalPts > 0) {
+      const valorMilheiro = (formData.valor_total / totalPts) * 1000;
       setFormData(prev => ({ ...prev, valor_milheiro: Number(valorMilheiro.toFixed(2)) }));
-    } else if (formData.tipo_valor === 'VM' && formData.valor_milheiro && formData.pontos_milhas && formData.pontos_milhas > 0) {
-      const valorTotal = (formData.valor_milheiro * formData.pontos_milhas) / 1000;
+    } else if (formData.tipo_valor === 'VM' && formData.valor_milheiro && totalPts > 0) {
+      const valorTotal = (formData.valor_milheiro * totalPts) / 1000;
       setFormData(prev => ({ ...prev, valor_total: Number(valorTotal.toFixed(2)) }));
     }
-  }, [formData.valor_total, formData.valor_milheiro, formData.pontos_milhas, formData.tipo_valor]);
+  }, [formData.valor_total, formData.valor_milheiro, formData.pontos_milhas, formData.bonus, formData.tipo_valor]);
 
   const carregarProgramasDoParceiro = async (parceiroId: string) => {
     if (!parceiroId) {
