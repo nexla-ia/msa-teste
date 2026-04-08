@@ -369,7 +369,10 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
         .map((c: any) => ({
           ...c,
           origem: 'compra' as const,
-          saldo_disponivel: Number(c.saldo_atual) || 0,
+          // total_pontos = pontos_milhas + bonus (quantidade real da compra)
+          // saldo_atual na tabela compras é o saldo TOTAL do estoque após a compra (cumulativo)
+          // — usar para saldo_disponivel causaria exibição errada no lote
+          saldo_disponivel: Number(c.total_pontos) || (Number(c.pontos_milhas) + Number(c.bonus || 0)),
         }))
         .filter((c: CompraLote) => (c.saldo_disponivel ?? 0) > 0);
 
