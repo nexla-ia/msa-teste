@@ -200,8 +200,20 @@ export default function Compras() {
   }, [formData.parceiro_id, formData.programa_id]);
 
   useEffect(() => {
-    // Usar total_pontos (pontos + bônus) para calcular o custo real por milha
-    const totalPts = (formData.pontos_milhas || 0) + (formData.bonus || 0);
+    const hoje = new Date().toISOString().split('T')[0];
+    const bonusFuturo =
+      (formData.bonus || 0) > 0 &&
+      !!formData.data_limite_bonus &&
+      formData.data_limite_bonus > hoje;
+
+    // Bônus futuro: o sistema vai criar dois registros separados (pontos agora + bônus depois),
+    // então o valor_milheiro deve refletir apenas os pontos pagos agora.
+    // Bônus no mesmo dia (ex: TUDO AZUL compra+bônus juntos): divide pelo total pois o custo
+    // real já está diluído no valor pago.
+    const totalPts = bonusFuturo
+      ? (formData.pontos_milhas || 0)
+      : (formData.pontos_milhas || 0) + (formData.bonus || 0);
+
     if (formData.tipo_valor === 'VT' && formData.valor_total && totalPts > 0) {
       const valorMilheiro = (formData.valor_total / totalPts) * 1000;
       setFormData(prev => ({ ...prev, valor_milheiro: Number(valorMilheiro.toFixed(2)) }));
@@ -209,7 +221,7 @@ export default function Compras() {
       const valorTotal = (formData.valor_milheiro * totalPts) / 1000;
       setFormData(prev => ({ ...prev, valor_total: Number(valorTotal.toFixed(2)) }));
     }
-  }, [formData.valor_total, formData.valor_milheiro, formData.pontos_milhas, formData.bonus, formData.tipo_valor]);
+  }, [formData.valor_total, formData.valor_milheiro, formData.pontos_milhas, formData.bonus, formData.tipo_valor, formData.data_limite_bonus]);
 
   const carregarProgramasDoParceiro = async (parceiroId: string) => {
     if (!parceiroId) {
