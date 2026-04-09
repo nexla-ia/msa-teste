@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Search, DollarSign, TrendingUp, AlertCircle, CheckCircle, RotateCcw } from 'lucide-react';
+import { Search, DollarSign, TrendingUp, AlertCircle, CheckCircle, RotateCcw, ChevronDown, ChevronRight } from 'lucide-react';
 import { formatCurrency, formatDate } from '../lib/formatters';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 type ContaReceber = {
   id: string;
+  parent_conta_id: string | null;
   venda_id: string | null;
   data_vencimento: string;
   valor_parcela: number;
@@ -43,6 +44,7 @@ export default function ContasReceber() {
   const [filtroStatus, setFiltroStatus] = useState<'todos' | 'pendente' | 'pago' | 'atrasado' | 'parcial'>('todos');
   const [filtroOrigem, setFiltroOrigem] = useState<'todos' | 'venda' | 'transferencia_pessoas'>('todos');
   const [contaSelecionada, setContaSelecionada] = useState<ContaReceber | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [showRecebimentoModal, setShowRecebimentoModal] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [recebimentoForm, setRecebimentoForm] = useState<RecebimentoForm>({
@@ -236,6 +238,7 @@ export default function ContasReceber() {
             conta_bancaria_id: contaSelecionada.conta_bancaria_id,
             cartao_id: contaSelecionada.cartao_id,
             status_pagamento: 'pendente',
+            parent_conta_id: contaSelecionada.id,
             observacao: `Saldo restante de pagamento parcial em ${recebimentoForm.data_pagamento}`
           });
 
@@ -474,37 +477,86 @@ export default function ContasReceber() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
-              {contasFiltradas.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
-                    Nenhuma conta encontrada
-                  </td>
-                </tr>
-              ) : (
-                contasFiltradas.map((conta) => {
-                  const statusInfo = getStatusInfo(conta.status_pagamento);
+              {(() => {
+                if (contasFiltradas.length === 0) {
                   return (
-                    <tr key={conta.id} className="hover:bg-slate-50">
+                    <tr>
+                      <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
+                        Nenhuma conta encontrada
+                      </td>
+                    </tr>
+                  );
+                }
+
+                // Separar filhos (têm parent_conta_id) dos pais/independentes
+                const filhosMap: Record<string, ContaReceber[]> = {};
+                const filhoIds = new Set<string>();
+                for (const c of contasFiltradas) {
+                  if (c.parent_conta_id) {
+                    filhoIds.add(c.id);
+                    if (!filhosMap[c.parent_conta_id]) filhosMap[c.parent_conta_id] = [];
+                    filhosMap[c.parent_conta_id].push(c);
+                  }
+                }
+                const principais = contasFiltradas.filter(c => !filhoIds.has(c.id));
+
+                const renderAcao = (conta: ContaReceber) => {
+                  if (conta.status_pagamento === 'pago') {
+                    return (
+                      <button onClick={() => confirmarEstorno(conta)} className="flex items-center gap-1 text-slate-500 hover:text-slate-700 transition-colors" title="Estornar">
+                        <RotateCcw className="w-4 h-4" /> Estornar
+                      </button>
+                    );
+                  }
+                  if (conta.status_pagamento === 'parcial') {
+                    return <span className="text-xs text-blue-600 font-medium">Pgto parcial</span>;
+                  }
+                  return (
+                    <button onClick={() => abrirRecebimento(conta)} className="flex items-center gap-1 text-green-600 hover:text-green-800 font-medium transition-colors">
+                      <CheckCircle className="w-4 h-4" /> Registrar
+                    </button>
+                  );
+                };
+
+                const renderOrigem = (conta: ContaReceber) => (
+                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                    conta.origem_descricao === 'Venda' ? 'bg-blue-100 text-blue-700'
+                    : conta.origem_descricao === 'Transferência' ? 'bg-purple-100 text-purple-700'
+                    : 'bg-slate-100 text-slate-600'
+                  }`}>{conta.origem_descricao}</span>
+                );
+
+                const rows: React.ReactNode[] = [];
+
+                for (const conta of principais) {
+                  const filhos = filhosMap[conta.id] || [];
+                  const temFilhos = filhos.length > 0;
+                  const expandido = expandedIds.has(conta.id);
+                  const statusInfo = getStatusInfo(conta.status_pagamento);
+
+                  rows.push(
+                    <tr key={conta.id} className={`hover:bg-slate-50 ${temFilhos ? 'bg-blue-50/30' : ''}`}>
                       <td className="px-4 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          conta.origem_descricao === 'Venda'
-                            ? 'bg-blue-100 text-blue-700'
-                            : conta.origem_descricao === 'Transferência'
-                            ? 'bg-purple-100 text-purple-700'
-                            : 'bg-slate-100 text-slate-600'
-                        }`}>
-                          {conta.origem_descricao}
-                        </span>
+                        <div className="flex items-center gap-1">
+                          {temFilhos && (
+                            <button
+                              onClick={() => setExpandedIds(prev => {
+                                const next = new Set(prev);
+                                next.has(conta.id) ? next.delete(conta.id) : next.add(conta.id);
+                                return next;
+                              })}
+                              className="text-slate-400 hover:text-slate-700 transition-colors"
+                              title={expandido ? 'Recolher' : 'Expandir pagamentos parciais'}
+                            >
+                              {expandido ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                            </button>
+                          )}
+                          {renderOrigem(conta)}
+                        </div>
                       </td>
-                      <td className="px-4 py-4 text-sm text-slate-900 max-w-[200px] truncate" title={conta.parceiro_nome}>
-                        {conta.parceiro_nome}
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-900">
-                        {conta.programa_nome}
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-600">
-                        {conta.numero_parcela}/{conta.total_parcelas}
-                      </td>
+                      <td className="px-4 py-4 text-sm text-slate-900 max-w-[200px] truncate" title={conta.parceiro_nome}>{conta.parceiro_nome}</td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-900">{conta.programa_nome}</td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-600">{conta.numero_parcela}/{conta.total_parcelas}</td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-slate-900">
                         {formatCurrency(conta.valor_parcela)}
                         {conta.status_pagamento === 'parcial' && conta.valor_pago != null && (
@@ -513,51 +565,47 @@ export default function ContasReceber() {
                           </div>
                         )}
                         {conta.status_pagamento === 'pago' && conta.valor_pago != null && conta.valor_pago !== conta.valor_parcela && (
-                          <div className="text-xs font-normal text-green-600">
-                            Recebido: {formatCurrency(conta.valor_pago)}
-                          </div>
+                          <div className="text-xs font-normal text-green-600">Recebido: {formatCurrency(conta.valor_pago)}</div>
                         )}
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-900">
-                        {formatDate(conta.data_vencimento)}
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-600">
-                        {conta.forma_pagamento || '-'}
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-600">
-                        {conta.data_pagamento ? formatDate(conta.data_pagamento) : '-'}
-                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-900">{formatDate(conta.data_vencimento)}</td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-600">{conta.forma_pagamento || '-'}</td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-600">{conta.data_pagamento ? formatDate(conta.data_pagamento) : '-'}</td>
                       <td className="px-4 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${statusInfo.color}`}>
-                          {statusInfo.label}
-                        </span>
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${statusInfo.color}`}>{statusInfo.label}</span>
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm">
-                        {conta.status_pagamento === 'pago' ? (
-                          <button
-                            onClick={() => confirmarEstorno(conta)}
-                            className="flex items-center gap-1 text-slate-500 hover:text-slate-700 transition-colors"
-                            title="Estornar recebimento"
-                          >
-                            <RotateCcw className="w-4 h-4" />
-                            Estornar
-                          </button>
-                        ) : conta.status_pagamento === 'parcial' ? (
-                          <span className="text-xs text-blue-600 font-medium">Pgto parcial</span>
-                        ) : (
-                          <button
-                            onClick={() => abrirRecebimento(conta)}
-                            className="flex items-center gap-1 text-green-600 hover:text-green-800 font-medium transition-colors"
-                          >
-                            <CheckCircle className="w-4 h-4" />
-                            Registrar
-                          </button>
-                        )}
-                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm">{renderAcao(conta)}</td>
                     </tr>
                   );
-                })
-              )}
+
+                  // Sub-linhas (filhos) — só mostrar se expandido
+                  if (temFilhos && expandido) {
+                    for (const filho of filhos) {
+                      const filhoStatus = getStatusInfo(filho.status_pagamento);
+                      rows.push(
+                        <tr key={filho.id} className="bg-slate-50 border-l-4 border-blue-200">
+                          <td className="px-4 py-3 whitespace-nowrap pl-10">
+                            <span className="text-xs text-slate-400 italic">↳ saldo restante</span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-600 max-w-[200px] truncate">{filho.parceiro_nome}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600">{filho.programa_nome}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-500">{filho.numero_parcela}/{filho.total_parcelas}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-slate-700">{formatCurrency(filho.valor_parcela)}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-700">{formatDate(filho.data_vencimento)}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-500">{filho.forma_pagamento || '-'}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-500">{filho.data_pagamento ? formatDate(filho.data_pagamento) : '-'}</td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${filhoStatus.color}`}>{filhoStatus.label}</span>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm">{renderAcao(filho)}</td>
+                        </tr>
+                      );
+                    }
+                  }
+                }
+
+                return rows;
+              })()}
             </tbody>
           </table>
         </div>
