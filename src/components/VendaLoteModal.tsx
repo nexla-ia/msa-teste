@@ -365,28 +365,33 @@ export default function VendaLoteModal({ isOpen, onClose, onSuccess, parceiros, 
         saldoEstoqueMap[ep.programa_id] = Number(ep.saldo_atual) || 0;
       }
 
-      const comprasMapped: CompraLote[] = (comprasRes.data || [])
-        .map((c: any) => ({
-          ...c,
-          origem: 'compra' as const,
-          // total_pontos = pontos_milhas + bonus (quantidade real da compra)
-          // saldo_atual na tabela compras é o saldo TOTAL do estoque após a compra (cumulativo)
-          // — usar para saldo_disponivel causaria exibição errada no lote
-          saldo_disponivel: Number(c.total_pontos) || (Number(c.pontos_milhas) + Number(c.bonus || 0)),
-        }))
+      // Distribuir saldo real do estoque entre compras (FIFO — mais antigas primeiro)
+      // Isso garante que compras já vendidas não apareçam com saldo disponível
+      const saldoRestantePorPrograma: Record<string, number> = { ...saldoEstoqueMap };
+
+      const comprasOrdenadas = [...(comprasRes.data || [])].sort(
+        (a: any, b: any) => new Date(a.created_at || a.data_entrada).getTime() - new Date(b.created_at || b.data_entrada).getTime()
+      );
+
+      const comprasMapped: CompraLote[] = comprasOrdenadas
+        .map((c: any) => {
+          const pid = c.programas_fidelidade?.id;
+          const totalCompra = Number(c.total_pontos) || (Number(c.pontos_milhas) + Number(c.bonus || 0));
+          const estoqueDisponivel = pid ? (saldoRestantePorPrograma[pid] ?? 0) : 0;
+          const saldoDisponivel = Math.min(totalCompra, estoqueDisponivel);
+          if (pid) {
+            saldoRestantePorPrograma[pid] = Math.max(0, estoqueDisponivel - saldoDisponivel);
+          }
+          return {
+            ...c,
+            origem: 'compra' as const,
+            saldo_disponivel: saldoDisponivel,
+          };
+        })
         .filter((c: CompraLote) => (c.saldo_disponivel ?? 0) > 0);
 
-      const saldoConsumidoPorPrograma: Record<string, number> = {};
-      for (const c of comprasMapped) {
-        const pid = c.programas_fidelidade?.id;
-        if (!pid) continue;
-        saldoConsumidoPorPrograma[pid] = (saldoConsumidoPorPrograma[pid] || 0) + (c.saldo_disponivel ?? 0);
-      }
-
-      const saldoRestanteParaTransferencias: Record<string, number> = {};
-      for (const pid of Object.keys(saldoEstoqueMap)) {
-        saldoRestanteParaTransferencias[pid] = Math.max(0, saldoEstoqueMap[pid] - (saldoConsumidoPorPrograma[pid] || 0));
-      }
+      // Saldo restante após compras → disponível para transferências
+      const saldoRestanteParaTransferencias: Record<string, number> = { ...saldoRestantePorPrograma };
 
       // Buscar custo por milheiro das transferências de pontos via estoque_movimentacoes
       const transferPontosIds = (transferenciasRes.data || []).map((t: any) => t.id);
