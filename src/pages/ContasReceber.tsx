@@ -486,7 +486,7 @@ export default function ContasReceber() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Ações</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-slate-200">
+            <tbody className="bg-white">
               {(() => {
                 if (contasFiltradas.length === 0) {
                   return (
@@ -545,8 +545,8 @@ export default function ContasReceber() {
                   const statusInfo = getStatusInfo(conta.status_pagamento);
 
                   rows.push(
-                    <tr key={conta.id} className={`hover:bg-slate-50 ${temFilhos ? 'bg-blue-50/30' : ''}`}>
-                      <td className="px-4 py-4 whitespace-nowrap">
+                    <tr key={conta.id} className={`hover:bg-slate-50 border-t-2 border-slate-200 ${temFilhos ? 'bg-blue-50/20' : ''}`}>
+                      <td className="px-4 py-5 whitespace-nowrap">
                         <div className="flex items-center gap-1">
                           {temFilhos && (
                             <button
@@ -555,7 +555,7 @@ export default function ContasReceber() {
                                 next.has(conta.id) ? next.delete(conta.id) : next.add(conta.id);
                                 return next;
                               })}
-                              className="text-slate-400 hover:text-slate-700 transition-colors"
+                              className="text-blue-400 hover:text-blue-700 transition-colors"
                               title={expandido ? 'Recolher' : 'Expandir pagamentos parciais'}
                             >
                               {expandido ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
@@ -564,34 +564,34 @@ export default function ContasReceber() {
                           {renderOrigem(conta)}
                         </div>
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-xs text-slate-500">
+                      <td className="px-4 py-5 whitespace-nowrap text-xs text-slate-500">
                         {conta.localizador
                           ? <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded" title="Localizador">{conta.localizador}</span>
                           : conta.ordem_compra
                           ? <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded" title="OC">{conta.ordem_compra}</span>
                           : <span className="text-slate-300">—</span>}
                       </td>
-                      <td className="px-4 py-4 text-sm text-slate-900 max-w-[200px] truncate" title={conta.parceiro_nome}>{conta.parceiro_nome}</td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-900">{conta.programa_nome}</td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-600">{conta.numero_parcela}/{conta.total_parcelas}</td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-slate-900">
+                      <td className="px-4 py-5 text-sm text-slate-900 max-w-[200px] truncate" title={conta.parceiro_nome}>{conta.parceiro_nome}</td>
+                      <td className="px-4 py-5 whitespace-nowrap text-sm text-slate-900">{conta.programa_nome}</td>
+                      <td className="px-4 py-5 whitespace-nowrap text-sm text-slate-600">{conta.numero_parcela}/{conta.total_parcelas}</td>
+                      <td className="px-4 py-5 whitespace-nowrap text-sm font-semibold text-slate-900">
                         {formatCurrency(conta.valor_parcela)}
                         {conta.status_pagamento === 'parcial' && conta.valor_pago != null && (
-                          <div className="text-xs font-normal text-blue-600">
-                            Pago: {formatCurrency(conta.valor_pago)} | Restante: {formatCurrency(conta.valor_parcela - conta.valor_pago)}
+                          <div className="text-xs font-normal text-blue-600 mt-0.5">
+                            Pago: {formatCurrency(conta.valor_pago)} · Restante: {formatCurrency(conta.valor_parcela - conta.valor_pago)}
                           </div>
                         )}
                         {conta.status_pagamento === 'pago' && conta.valor_pago != null && conta.valor_pago !== conta.valor_parcela && (
-                          <div className="text-xs font-normal text-green-600">Recebido: {formatCurrency(conta.valor_pago)}</div>
+                          <div className="text-xs font-normal text-green-600 mt-0.5">Recebido: {formatCurrency(conta.valor_pago)}</div>
                         )}
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-900">{formatDate(conta.data_vencimento)}</td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-600">{conta.forma_pagamento || '-'}</td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-600">{conta.data_pagamento ? formatDate(conta.data_pagamento) : '-'}</td>
-                      <td className="px-4 py-4 whitespace-nowrap">
+                      <td className="px-4 py-5 whitespace-nowrap text-sm text-slate-900">{formatDate(conta.data_vencimento)}</td>
+                      <td className="px-4 py-5 whitespace-nowrap text-sm text-slate-600">{conta.forma_pagamento || '-'}</td>
+                      <td className="px-4 py-5 whitespace-nowrap text-sm text-slate-600">{conta.data_pagamento ? formatDate(conta.data_pagamento) : '-'}</td>
+                      <td className="px-4 py-5 whitespace-nowrap">
                         <span className={`px-2 py-1 text-xs font-medium rounded-full ${statusInfo.color}`}>{statusInfo.label}</span>
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm">{renderAcao(conta)}</td>
+                      <td className="px-4 py-5 whitespace-nowrap text-sm">{renderAcao(conta)}</td>
                     </tr>
                   );
 
@@ -600,18 +600,18 @@ export default function ContasReceber() {
                     for (const filho of filhos) {
                       const filhoStatus = getStatusInfo(filho.status_pagamento);
                       rows.push(
-                        <tr key={filho.id} className="bg-slate-50 border-l-4 border-blue-200">
-                          <td className="px-4 py-3 whitespace-nowrap pl-10">
-                            <span className="text-xs text-slate-400 italic">↳ saldo restante</span>
+                        <tr key={filho.id} className="bg-blue-50/40 border-l-[3px] border-blue-300">
+                          <td className="pl-8 pr-4 py-3 whitespace-nowrap">
+                            <span className="text-xs text-blue-400 font-medium">↳ saldo restante</span>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-xs text-slate-400">—</td>
-                          <td className="px-4 py-3 text-sm text-slate-600 max-w-[200px] truncate">{filho.parceiro_nome}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600">{filho.programa_nome}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-500">{filho.numero_parcela}/{filho.total_parcelas}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-slate-700">{formatCurrency(filho.valor_parcela)}</td>
+                          <td className="px-4 py-3 text-sm text-slate-500 max-w-[200px] truncate">{filho.parceiro_nome}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-500">{filho.programa_nome}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-400">{filho.numero_parcela}/{filho.total_parcelas}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-slate-700">{formatCurrency(filho.valor_parcela)}</td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-700">{formatDate(filho.data_vencimento)}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-500">{filho.forma_pagamento || '-'}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-500">{filho.data_pagamento ? formatDate(filho.data_pagamento) : '-'}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-400">{filho.forma_pagamento || '-'}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-400">{filho.data_pagamento ? formatDate(filho.data_pagamento) : '-'}</td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <span className={`px-2 py-1 text-xs font-medium rounded-full ${filhoStatus.color}`}>{filhoStatus.label}</span>
                           </td>
