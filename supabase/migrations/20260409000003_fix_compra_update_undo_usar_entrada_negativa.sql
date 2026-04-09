@@ -1,21 +1,20 @@
 /*
-  # Fix: undo de UPDATE de compra deve usar Entrada negativa, não Saída
+  # Fix trigger_atualizar_estoque_compras — undo via Entrada negativa
 
   ## Problema
-  No trigger UPDATE (Concluído → Concluído), o undo da compra antiga
-  chamava atualizar_estoque_pontos(..., 'Saída', OLD.valor_total).
+  No branch UPDATE Concluído→Concluído, o passo de "undo" usava tipo 'Saída'.
+  A função atualizar_estoque_pontos no branch Saída calcula:
+    v_valor_movimentacao = p_quantidade × custo_medio_atual / 1000
+  e ignora completamente o p_valor_total passado. Isso significa que o undo
+  remove do valor_total um montante errado (baseado no custo médio atual,
+  não no custo original da compra), corrompendo o custo médio no estoque.
 
-  Porém, no branch 'Saída' da função, o valor monetário é recalculado como:
-    v_valor_movimentacao = quantidade × custo_medio_atual / 1000
-  — ignorando completamente o OLD.valor_total passado.
-
-  Isso faz o undo remover um valor diferente do que foi originalmente adicionado,
-  corrompendo o custo_medio quando o valor_milheiro de uma compra é editado.
+  O mesmo problema existia no branch DELETE.
 
   ## Correção
-  Usar 'Entrada' com quantidade e valor_total negativos no undo.
-  O branch 'Entrada' subtrai exatamente o OLD.valor_total do acumulado,
-  recalculando o custo_medio corretamente.
+  Trocar o undo de 'Saída' por 'Entrada' com quantidade e valor_total negativos.
+  No branch Entrada, atualizar_estoque_pontos usa diretamente o p_valor_total,
+  garantindo que o valor exato original seja subtraído.
 */
 
 CREATE OR REPLACE FUNCTION trigger_atualizar_estoque_compras()
@@ -23,9 +22,12 @@ RETURNS TRIGGER AS $$
 BEGIN
   IF TG_OP = 'INSERT' THEN
     IF NEW.status = 'Concluído' THEN
+      -- Compra do carrinho não afeta estoque (processada pela transferência)
       IF NEW.observacao = 'Compra no Carrinho' THEN
         RETURN NEW;
       END IF;
+
+      NEW.saldo_atual := COALESCE(NEW.pontos_milhas, 0) + COALESCE(NEW.bonus, 0);
 
       PERFORM atualizar_estoque_pontos(
         NEW.parceiro_id,
@@ -46,6 +48,8 @@ BEGIN
         RETURN NEW;
       END IF;
 
+      NEW.saldo_atual := COALESCE(NEW.pontos_milhas, 0) + COALESCE(NEW.bonus, 0);
+
       PERFORM atualizar_estoque_pontos(
         NEW.parceiro_id,
         NEW.programa_id,
@@ -63,12 +67,14 @@ BEGIN
         RETURN NEW;
       END IF;
 
+      NEW.saldo_atual := 0;
+
       PERFORM atualizar_estoque_pontos(
         OLD.parceiro_id,
         OLD.programa_id,
-        -(COALESCE(OLD.pontos_milhas, 0) + COALESCE(OLD.bonus, 0)),
-        'Entrada',
-        -COALESCE(OLD.valor_total, 0),
+        COALESCE(OLD.pontos_milhas, 0) + COALESCE(OLD.bonus, 0),
+        'Saída',
+        COALESCE(OLD.valor_total, 0),
         'estorno_compra',
         'Estorno de compra de pontos/milhas',
         OLD.id,
@@ -76,18 +82,21 @@ BEGIN
       );
 
     ELSIF OLD.status = 'Concluído' AND NEW.status = 'Concluído' AND (
-      OLD.pontos_milhas <> NEW.pontos_milhas OR
-      OLD.bonus <> NEW.bonus OR
-      OLD.valor_total <> NEW.valor_total OR
-      OLD.parceiro_id <> NEW.parceiro_id OR
-      OLD.programa_id <> NEW.programa_id
+      OLD.pontos_milhas IS DISTINCT FROM NEW.pontos_milhas OR
+      OLD.bonus IS DISTINCT FROM NEW.bonus OR
+      OLD.valor_total IS DISTINCT FROM NEW.valor_total OR
+      OLD.parceiro_id IS DISTINCT FROM NEW.parceiro_id OR
+      OLD.programa_id IS DISTINCT FROM NEW.programa_id
     ) THEN
       IF OLD.observacao = 'Compra no Carrinho' THEN
         RETURN NEW;
       END IF;
 
-      -- Undo: usar Entrada negativa para subtrair o valor exato da compra antiga
-      -- (branch Saída ignora p_valor_total e usa custo_medio atual — incorreto para undo)
+      NEW.saldo_atual := COALESCE(NEW.pontos_milhas, 0) + COALESCE(NEW.bonus, 0);
+
+      -- Undo (old): Entrada negativa — subtrai o valor exato da compra antiga
+      -- (usar 'Saída' ignoraria p_valor_total e usaria custo_medio × quantidade,
+      --  corrompendo o custo médio no estoque)
       PERFORM atualizar_estoque_pontos(
         OLD.parceiro_id,
         OLD.programa_id,
@@ -100,7 +109,7 @@ BEGIN
         'compras'
       );
 
-      -- Apply: adicionar os novos valores
+      -- Apply (new): Entrada positiva — adiciona os novos valores
       PERFORM atualizar_estoque_pontos(
         NEW.parceiro_id,
         NEW.programa_id,
@@ -115,7 +124,8 @@ BEGIN
     END IF;
 
   ELSIF TG_OP = 'DELETE' THEN
-    IF OLD.status = 'Concluído' AND OLD.observacao != 'Compra no Carrinho' THEN
+    IF OLD.status = 'Concluído' AND COALESCE(OLD.observacao, '') != 'Compra no Carrinho' THEN
+      -- Entrada negativa — subtrai o valor exato da compra excluída
       PERFORM atualizar_estoque_pontos(
         OLD.parceiro_id,
         OLD.programa_id,
