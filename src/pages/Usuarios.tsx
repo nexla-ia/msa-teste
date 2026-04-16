@@ -33,35 +33,62 @@ type Permissao = {
   pode_deletar: boolean;
 };
 
-const RECURSOS_DISPONIVEIS = [
-  { key: 'dashboard', label: 'Dashboard' },
-  { key: 'cartoes', label: 'Cartões' },
-  { key: 'parceiros', label: 'Parceiros' },
-  { key: 'usuarios', label: 'Usuários' },
-  { key: 'clientes', label: 'Clientes' },
-  { key: 'centro_custos', label: 'Centro de Custos' },
-  { key: 'classificacao_contabil', label: 'Classificação Contábil' },
-  { key: 'contas_bancarias', label: 'Contas Bancárias' },
-  { key: 'produtos', label: 'Produtos' },
-  { key: 'programas', label: 'Programas' },
-  { key: 'logs', label: 'Logs' },
-  { key: 'lojas', label: 'Lojas' },
-  { key: 'programas_fidelidade', label: 'Programas de Fidelidade' },
-  { key: 'conta_familia', label: 'Conta Família' },
-  { key: 'status_programa', label: 'Status Programa' },
-  { key: 'latam', label: 'LATAM' },
-  { key: 'azul', label: 'Azul' },
-  { key: 'smiles', label: 'Smiles' },
-  { key: 'livelo', label: 'Livelo' },
-  { key: 'tap', label: 'TAP' },
-  { key: 'accor', label: 'Accor' },
-  { key: 'km', label: 'KM' },
-  { key: 'pagol', label: 'Pagol' },
-  { key: 'esfera', label: 'Esfera' },
-  { key: 'hotmilhas', label: 'Hotmilhas' },
-  { key: 'coopera', label: 'Coopera' },
-  { key: 'gov', label: 'GOv' }
+const GRUPOS_RECURSOS = [
+  {
+    grupo: 'Geral',
+    recursos: [
+      { key: 'dashboard', label: 'Dashboard' },
+      { key: 'atividades', label: 'Atividades' },
+      { key: 'estoque', label: 'Estoque' },
+    ]
+  },
+  {
+    grupo: 'Movimentações',
+    recursos: [
+      { key: 'compras', label: 'Compras (Entradas)' },
+      { key: 'vendas', label: 'Vendas' },
+      { key: 'compra_bonificada', label: 'Compra Bonificada' },
+      { key: 'transferencia_pontos', label: 'Transferência de Pontos/Milhas' },
+      { key: 'transferencia_pessoas', label: 'Transferência entre Pessoas' },
+    ]
+  },
+  {
+    grupo: 'Financeiro',
+    recursos: [
+      { key: 'contas_receber', label: 'Contas a Receber' },
+      { key: 'contas_a_pagar', label: 'Contas a Pagar' },
+    ]
+  },
+  {
+    grupo: 'Cadastros',
+    recursos: [
+      { key: 'clientes', label: 'Clientes' },
+      { key: 'parceiros', label: 'Parceiros' },
+      { key: 'produtos', label: 'Produtos' },
+      { key: 'programas_fidelidade', label: 'Programas de Fidelidade' },
+      { key: 'programas_clubes', label: 'Programas/Clubes' },
+      { key: 'conta_familia', label: 'Conta Família' },
+      { key: 'contas_bancarias', label: 'Banco Emissor' },
+      { key: 'cartoes', label: 'Cartões de Crédito' },
+      { key: 'lojas', label: 'Lojas - Compras Bonificadas' },
+      { key: 'tipos_compra', label: 'Tipos de Compra' },
+      { key: 'formas_pagamento', label: 'Formas de Pagamento' },
+      { key: 'perfis', label: 'Perfis de Usuário' },
+      { key: 'usuarios', label: 'Usuários' },
+      { key: 'classificacao_contabil', label: 'Classificação Contábil' },
+      { key: 'centro_custos', label: 'Centro de Custo' },
+      { key: 'status_programa', label: 'Status Programas' },
+    ]
+  },
+  {
+    grupo: 'Outros',
+    recursos: [
+      { key: 'logs', label: 'Logs' },
+    ]
+  },
 ];
+
+const RECURSOS_DISPONIVEIS = GRUPOS_RECURSOS.flatMap(g => g.recursos);
 
 export default function Usuarios() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
@@ -584,54 +611,63 @@ export default function Usuarios() {
                   <th className="px-4 py-3 text-center text-xs font-medium text-slate-600 uppercase w-24">Deletar</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
-                {RECURSOS_DISPONIVEIS.map(recurso => {
-                  const perm = permissoes.find(p => p.recurso === recurso.key);
-                  return (
-                    <tr key={recurso.key} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 text-slate-800 font-medium">{recurso.label}</td>
-                      <td className="px-4 py-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => togglePermissao(recurso.key, 'visualizar')}
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
-                            perm?.pode_visualizar
-                              ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                              : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
-                          }`}
-                        >
-                          {perm?.pode_visualizar ? <Check className="w-5 h-5" /> : <X className="w-5 h-5" />}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => togglePermissao(recurso.key, 'editar')}
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
-                            perm?.pode_editar
-                              ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                              : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
-                          }`}
-                        >
-                          {perm?.pode_editar ? <Check className="w-5 h-5" /> : <X className="w-5 h-5" />}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => togglePermissao(recurso.key, 'deletar')}
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
-                            perm?.pode_deletar
-                              ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                              : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
-                          }`}
-                        >
-                          {perm?.pode_deletar ? <Check className="w-5 h-5" /> : <X className="w-5 h-5" />}
-                        </button>
+              <tbody>
+                {GRUPOS_RECURSOS.map(grupo => (
+                  <>
+                    <tr key={`grupo-${grupo.grupo}`} className="bg-slate-100">
+                      <td colSpan={4} className="px-4 py-1.5 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        {grupo.grupo}
                       </td>
                     </tr>
-                  );
-                })}
+                    {grupo.recursos.map(recurso => {
+                      const perm = permissoes.find(p => p.recurso === recurso.key);
+                      return (
+                        <tr key={recurso.key} className="hover:bg-slate-50 border-b border-slate-100">
+                          <td className="px-4 py-3 text-slate-800 font-medium pl-6">{recurso.label}</td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => togglePermissao(recurso.key, 'visualizar')}
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+                                perm?.pode_visualizar
+                                  ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                  : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
+                              }`}
+                            >
+                              {perm?.pode_visualizar ? <Check className="w-5 h-5" /> : <X className="w-5 h-5" />}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => togglePermissao(recurso.key, 'editar')}
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+                                perm?.pode_editar
+                                  ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                  : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
+                              }`}
+                            >
+                              {perm?.pode_editar ? <Check className="w-5 h-5" /> : <X className="w-5 h-5" />}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => togglePermissao(recurso.key, 'deletar')}
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+                                perm?.pode_deletar
+                                  ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                                  : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
+                              }`}
+                            >
+                              {perm?.pode_deletar ? <Check className="w-5 h-5" /> : <X className="w-5 h-5" />}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </>
+                ))}
               </tbody>
             </table>
           </div>
