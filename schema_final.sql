@@ -4003,6 +4003,75 @@ END;
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.excluir_programa_clube(p_clube_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_clube RECORD;
+  v_total_entradas numeric := 0;
+  v_estoque RECORD;
+  v_novo_saldo numeric;
+  v_novo_valor numeric;
+  v_novo_custo_medio numeric;
+BEGIN
+  SELECT * INTO v_clube FROM programas_clubes WHERE id = p_clube_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Registro não encontrado: %', p_clube_id;
+  END IF;
+
+  -- Soma todas as entradas deste clube no estoque
+  SELECT COALESCE(SUM(quantidade), 0) INTO v_total_entradas
+  FROM estoque_movimentacoes
+  WHERE referencia_id = p_clube_id
+    AND referencia_tabela = 'programas_clubes'
+    AND tipo = 'entrada';
+
+  -- Se havia entradas, reverte no saldo do parceiro/programa
+  IF v_total_entradas > 0 AND v_clube.parceiro_id IS NOT NULL AND v_clube.programa_id IS NOT NULL THEN
+    SELECT * INTO v_estoque
+    FROM estoque_pontos
+    WHERE parceiro_id = v_clube.parceiro_id AND programa_id = v_clube.programa_id;
+
+    IF FOUND THEN
+      v_novo_saldo := GREATEST(0, v_estoque.saldo_atual - v_total_entradas);
+
+      IF v_estoque.saldo_atual > 0 THEN
+        v_novo_valor := v_estoque.valor_total * (v_novo_saldo::numeric / v_estoque.saldo_atual::numeric);
+      ELSE
+        v_novo_valor := 0;
+      END IF;
+
+      IF v_novo_saldo > 0 THEN
+        v_novo_custo_medio := (v_novo_valor / v_novo_saldo) * 1000;
+      ELSE
+        v_novo_custo_medio := 0;
+        v_novo_valor := 0;
+      END IF;
+
+      UPDATE estoque_pontos
+      SET saldo_atual  = v_novo_saldo,
+          valor_total  = v_novo_valor,
+          custo_medio  = v_novo_custo_medio,
+          updated_at   = now()
+      WHERE parceiro_id = v_clube.parceiro_id AND programa_id = v_clube.programa_id;
+    END IF;
+  END IF;
+
+  -- Remove movimentações, atividades e o registro
+  DELETE FROM estoque_movimentacoes
+  WHERE referencia_id = p_clube_id AND referencia_tabela = 'programas_clubes';
+
+  DELETE FROM atividades
+  WHERE referencia_id = p_clube_id AND referencia_tabela = 'programas_clubes';
+
+  DELETE FROM programas_clubes WHERE id = p_clube_id;
+END;
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.processar_primeiro_mes_clube(p_clube_id uuid)
  RETURNS TABLE(processado boolean, pontos_creditados numeric, mensagem text)
  LANGUAGE plpgsql

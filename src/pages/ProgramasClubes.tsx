@@ -727,35 +727,15 @@ export default function ProgramasClubes() {
       isOpen: true,
       type: 'warning',
       title: 'Confirmar Exclusão',
-      message: `Tem certeza que deseja excluir este registro?\n\nParceiro: ${parceiroNome}\nPrograma: ${programaNome}\n\nEsta ação não pode ser desfeita e irá remover também todas as atividades pendentes relacionadas.`,
+      message: `Tem certeza que deseja excluir este registro?\n\nParceiro: ${parceiroNome}\nPrograma: ${programaNome}\n\nEsta ação irá remover o cadastro, todas as atividades relacionadas e reverter os pontos no estoque.`,
       onConfirm: async () => {
         try {
-          console.log('Iniciando delete do registro:', id);
-
-          const { error } = await supabase
-            .from('programas_clubes')
-            .delete()
-            .eq('id', id);
+          const { error } = await supabase.rpc('excluir_programa_clube', { p_clube_id: id });
 
           if (error) {
-            console.error('Erro ao deletar:', error);
+            console.error('Erro ao excluir:', error);
             throw error;
           }
-
-          console.log('Delete realizado com sucesso');
-
-          const { data: verificacao } = await supabase
-            .from('programas_clubes')
-            .select('id')
-            .eq('id', id)
-            .maybeSingle();
-
-          if (verificacao) {
-            console.error('ALERTA: Registro ainda existe após delete!', verificacao);
-            throw new Error('O registro não foi deletado corretamente do banco de dados');
-          }
-
-          console.log('Verificação confirmada: registro não existe mais no banco');
 
           await fetchData();
 
@@ -763,7 +743,7 @@ export default function ProgramasClubes() {
             isOpen: true,
             type: 'success',
             title: 'Registro Excluído',
-            message: `O registro foi excluído com sucesso.\n\nParceiro: ${parceiroNome}\nPrograma: ${programaNome}`
+            message: `O registro foi excluído com sucesso e os pontos foram revertidos no estoque.\n\nParceiro: ${parceiroNome}\nPrograma: ${programaNome}`
           });
         } catch (error: any) {
           console.error('Erro ao excluir:', error);
