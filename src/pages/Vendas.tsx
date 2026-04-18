@@ -169,7 +169,7 @@ export default function Vendas() {
       let comissaoCalc = 0;
       if (comissaoInfo.tem_comissao && comissaoInfo.tipo && comissaoInfo.valor > 0) {
         comissaoCalc = comissaoInfo.tipo === 'porcentagem'
-          ? formData.valor_total * comissaoInfo.valor / 100
+          ? bruto * comissaoInfo.valor / 100
           : comissaoInfo.valor;
       }
       // Se o usuário editou manualmente, respeitar o valor dele (mesmo que 0).
