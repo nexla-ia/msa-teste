@@ -222,7 +222,6 @@ export default function ProgramasClubes() {
         (item.email?.toLowerCase() || '').includes(termo) ||
         (item.n_fidelidade?.toLowerCase() || '').includes(termo) ||
         programaNome.includes(termo) ||
-        contaFamiliaNome.includes(termo) ||
         clubeNome.includes(termo) ||
         (item.cartao?.toLowerCase() || '').includes(termo) ||
         (item.status_conta?.toLowerCase() || '').includes(termo) ||
