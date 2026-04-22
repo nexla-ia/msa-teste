@@ -48,6 +48,9 @@ type FaturaGroup = {
 
 const hoje = () => new Date(new Date().toDateString());
 
+const formatBRL = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const parseBRL = (s: string) => parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0;
+
 export default function ContasAPagar() {
   const [contas, setContas] = useState<ContaPagar[]>([]);
   const [loading, setLoading] = useState(true);
@@ -166,7 +169,7 @@ export default function ContasAPagar() {
   // ── pagamento parcela individual ────────────────────────────────────────
   const abrirModalPagar = (conta: ContaPagar) => {
     setContaSelecionada(conta);
-    setValorPagamento(conta.valor_parcela.toFixed(2));
+    setValorPagamento(formatBRL(conta.valor_parcela));
     setDataPagamento(new Date().toISOString().split('T')[0]);
     setShowPagarModal(true);
   };
@@ -176,7 +179,7 @@ export default function ContasAPagar() {
     try {
       const { error } = await supabase
         .from('contas_a_pagar')
-        .update({ status_pagamento: 'pago', data_pagamento: dataPagamento, valor_pago: parseFloat(valorPagamento) })
+        .update({ status_pagamento: 'pago', data_pagamento: dataPagamento, valor_pago: parseBRL(valorPagamento) })
         .eq('id', contaSelecionada.id);
       if (error) throw error;
       setShowPagarModal(false);
@@ -190,7 +193,7 @@ export default function ContasAPagar() {
   // ── pagamento fatura inteira ────────────────────────────────────────────
   const abrirModalFatura = (fatura: FaturaGroup) => {
     setFaturaParaPagar(fatura);
-    setValorFatura(fatura.totalPendente.toFixed(2));
+    setValorFatura(formatBRL(fatura.totalPendente));
     setDataFatura(new Date().toISOString().split('T')[0]);
     setShowPagarFaturaModal(true);
   };
@@ -200,7 +203,7 @@ export default function ContasAPagar() {
     try {
       const pendentes = faturaParaPagar.contas.filter(c => c.status_pagamento === 'pendente');
       const valorTotal = faturaParaPagar.totalPendente;
-      const valorInformado = parseFloat(valorFatura);
+      const valorInformado = parseBRL(valorFatura);
       const proporcao = valorTotal > 0 ? valorInformado / valorTotal : 1;
 
       const updates = pendentes.map(c =>
@@ -653,7 +656,7 @@ export default function ContasAPagar() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Valor Pago *</label>
-                <input type="number" step="0.01" value={valorPagamento} onChange={e => setValorPagamento(e.target.value)}
+                <input type="text" value={valorPagamento} onChange={e => setValorPagamento(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm" />
               </div>
               <div>
@@ -698,9 +701,9 @@ export default function ContasAPagar() {
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Valor Pago *</label>
-                <input type="number" step="0.01" value={valorFatura} onChange={e => setValorFatura(e.target.value)}
+                <input type="text" value={valorFatura} onChange={e => setValorFatura(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm" />
-                {parseFloat(valorFatura) < faturaParaPagar.totalPendente && parseFloat(valorFatura) > 0 && (
+                {parseBRL(valorFatura) < faturaParaPagar.totalPendente && parseBRL(valorFatura) > 0 && (
                   <p className="text-xs text-amber-600 mt-1">Valor menor que o total — será distribuído proporcionalmente entre as parcelas.</p>
                 )}
               </div>
