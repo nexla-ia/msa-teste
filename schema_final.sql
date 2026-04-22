@@ -1272,13 +1272,17 @@ BEGIN
       v_mes := EXTRACT(MONTH FROM p_data_base)::integer;
       v_ano := EXTRACT(YEAR FROM p_data_base)::integer;
 
-      -- Se passou do fechamento, avança para o próximo mês
+      -- Se passou do fechamento, avança para o próximo ciclo
       IF v_dia_fechamento IS NOT NULL AND EXTRACT(DAY FROM p_data_base)::integer >= v_dia_fechamento THEN
         v_mes := v_mes + 1;
-        IF v_mes > 12 THEN
-          v_mes := 1;
-          v_ano := v_ano + 1;
-        END IF;
+        IF v_mes > 12 THEN v_mes := 1; v_ano := v_ano + 1; END IF;
+      END IF;
+
+      -- Quando dia_vencimento < dia_fechamento, o vencimento cai no mês SEGUINTE ao fechamento
+      -- Exemplo: fecha=25, vence=5 → compra em abr fecha em abr, mas vence em mai
+      IF v_dia_fechamento IS NOT NULL AND v_dia_vencimento < v_dia_fechamento THEN
+        v_mes := v_mes + 1;
+        IF v_mes > 12 THEN v_mes := 1; v_ano := v_ano + 1; END IF;
       END IF;
 
       -- Avança pelos meses das parcelas
