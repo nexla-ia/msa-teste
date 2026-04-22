@@ -33,6 +33,7 @@ interface TipoCompra {
   id: string;
   nome: string;
   ativo: boolean;
+  nao_registrar_estoque: boolean;
 }
 
 interface Cartao {
@@ -277,7 +278,7 @@ export default function Compras() {
 
       const [comprasRes, tiposCompraRes, cartoesRes, bancosRes, classificacoesRes, formasPagRes, parceirosRes] = await Promise.all([
         supabase.from('compras').select('*, parceiros(nome_parceiro), programas_fidelidade(nome)').order('created_at', { ascending: false }),
-        supabase.from('tipos_compra').select('id, nome, ativo').eq('ativo', true).order('nome'),
+        supabase.from('tipos_compra').select('id, nome, ativo, nao_registrar_estoque').eq('ativo', true).order('nome'),
         supabase.from('cartoes_credito').select('id, cartao, banco_emissor, dia_vencimento, dia_fechamento').order('cartao'),
         supabase.from('contas_bancarias').select('id, nome_banco').order('nome_banco'),
         supabase.from('classificacao_contabil').select('id, classificacao, descricao').order('classificacao'),

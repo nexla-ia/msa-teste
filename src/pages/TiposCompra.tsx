@@ -10,6 +10,7 @@ type TipoCompra = {
   nome: string;
   descricao?: string;
   ativo: boolean;
+  nao_registrar_estoque: boolean;
 };
 
 export default function TiposCompra() {
@@ -21,6 +22,7 @@ export default function TiposCompra() {
   const [nome, setNome] = useState('');
   const [descricao, setDescricao] = useState('');
   const [ativo, setAtivo] = useState(true);
+  const [naoRegistrarEstoque, setNaoRegistrarEstoque] = useState(false);
 
   const [dialogConfig, setDialogConfig] = useState<{
     isOpen: boolean;
@@ -52,6 +54,7 @@ export default function TiposCompra() {
     setNome('');
     setDescricao('');
     setAtivo(true);
+    setNaoRegistrarEstoque(false);
     setModalOpen(true);
   };
 
@@ -60,6 +63,7 @@ export default function TiposCompra() {
     setNome(item.nome);
     setDescricao(item.descricao || '');
     setAtivo(item.ativo);
+    setNaoRegistrarEstoque(item.nao_registrar_estoque);
     setModalOpen(true);
   };
 
@@ -103,24 +107,24 @@ export default function TiposCompra() {
     e.preventDefault();
     try {
       if (editing) {
-        await supabase.from('tipos_compra').update({ nome, descricao, ativo }).eq('id', editing.id);
+        await supabase.from('tipos_compra').update({ nome, descricao, ativo, nao_registrar_estoque: naoRegistrarEstoque }).eq('id', editing.id);
         await supabase.from('logs').insert({
           usuario_id: usuario?.id,
           usuario_nome: usuario?.nome || '',
           acao: 'UPDATE',
           linha_afetada: `Tipo de Compra: ${nome}`,
           dados_antes: editing,
-          dados_depois: { nome, descricao, ativo }
+          dados_depois: { nome, descricao, ativo, nao_registrar_estoque: naoRegistrarEstoque }
         });
       } else {
-        await supabase.from('tipos_compra').insert([{ nome, descricao, ativo }]);
+        await supabase.from('tipos_compra').insert([{ nome, descricao, ativo, nao_registrar_estoque: naoRegistrarEstoque }]);
         await supabase.from('logs').insert({
           usuario_id: usuario?.id,
           usuario_nome: usuario?.nome || '',
           acao: 'INSERT',
           linha_afetada: `Tipo de Compra: ${nome}`,
           dados_antes: null,
-          dados_depois: { nome, descricao, ativo }
+          dados_depois: { nome, descricao, ativo, nao_registrar_estoque: naoRegistrarEstoque }
         });
       }
       loadData();
@@ -154,6 +158,15 @@ export default function TiposCompra() {
         columns={[
           { key: 'nome', label: 'Nome' },
           { key: 'descricao', label: 'Descrição' },
+          {
+            key: 'nao_registrar_estoque',
+            label: 'Não registra estoque',
+            render: (item: TipoCompra) => (
+              <span className={`px-2 py-1 text-xs rounded-full ${item.nao_registrar_estoque ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
+                {item.nao_registrar_estoque ? 'Sim' : 'Não'}
+              </span>
+            )
+          },
           {
             key: 'ativo',
             label: 'Status',
@@ -198,6 +211,19 @@ export default function TiposCompra() {
               placeholder="Digite a descrição do tipo de compra"
               rows={3}
             />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="naoRegistrarEstoque"
+              checked={naoRegistrarEstoque}
+              onChange={(e) => setNaoRegistrarEstoque(e.target.checked)}
+              className="w-4 h-4 text-amber-600 border-slate-300 rounded focus:ring-amber-500"
+            />
+            <label htmlFor="naoRegistrarEstoque" className="text-sm font-medium text-slate-700">
+              Não registrar no estoque (somente fluxo financeiro)
+            </label>
           </div>
 
           <div className="flex items-center gap-2">

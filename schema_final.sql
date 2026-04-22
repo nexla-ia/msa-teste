@@ -648,6 +648,7 @@ CREATE TABLE IF NOT EXISTS public.tipos_compra (
   nome text NOT NULL,
   descricao text,
   ativo boolean DEFAULT true,
+  nao_registrar_estoque boolean DEFAULT false,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   PRIMARY KEY (id)
@@ -5847,8 +5848,12 @@ AS $function$
 DECLARE
   v_saldo_atual       decimal;
   v_custo_medio_atual decimal;
+  v_nao_registrar     boolean;
 BEGIN
   IF TG_OP = 'INSERT' THEN
+    SELECT nao_registrar_estoque INTO v_nao_registrar FROM tipos_compra WHERE id = NEW.tipo_compra_id;
+    IF COALESCE(v_nao_registrar, false) THEN RETURN NEW; END IF;
+
     IF NEW.status = 'Concluído' THEN
       IF NEW.observacao = 'Compra no Carrinho' THEN
         SELECT saldo_atual, custo_medio INTO v_saldo_atual, v_custo_medio_atual
@@ -5885,6 +5890,9 @@ BEGIN
     END IF;
 
   ELSIF TG_OP = 'UPDATE' THEN
+    SELECT nao_registrar_estoque INTO v_nao_registrar FROM tipos_compra WHERE id = NEW.tipo_compra_id;
+    IF COALESCE(v_nao_registrar, false) THEN RETURN NEW; END IF;
+
     IF OLD.status = 'Pendente' AND NEW.status = 'Concluído' THEN
       IF NEW.observacao = 'Compra no Carrinho' THEN RETURN NEW; END IF;
 
@@ -5941,6 +5949,9 @@ BEGIN
     END IF;
 
   ELSIF TG_OP = 'DELETE' THEN
+    SELECT nao_registrar_estoque INTO v_nao_registrar FROM tipos_compra WHERE id = OLD.tipo_compra_id;
+    IF COALESCE(v_nao_registrar, false) THEN RETURN OLD; END IF;
+
     IF OLD.status = 'Concluído' AND COALESCE(OLD.observacao, '') != 'Compra no Carrinho' THEN
       UPDATE estoque_pontos
       SET
@@ -5966,7 +5977,12 @@ CREATE OR REPLACE FUNCTION public.trigger_compras_before_saldo()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+DECLARE
+  v_nao_registrar boolean;
 BEGIN
+SELECT nao_registrar_estoque INTO v_nao_registrar FROM tipos_compra WHERE id = NEW.tipo_compra_id;
+IF COALESCE(v_nao_registrar, false) THEN RETURN NEW; END IF;
+
 IF TG_OP = 'INSERT' THEN
 IF NEW.status = 'Concluído' THEN
 NEW.saldo_atual := COALESCE(NEW.pontos_milhas, 0) + COALESCE(NEW.bonus, 0);
