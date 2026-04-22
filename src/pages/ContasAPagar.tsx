@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import {
   Search, DollarSign, TrendingDown, AlertCircle, Calendar,
   CheckCircle, X, SlidersHorizontal, ChevronDown, ChevronUp,
-  CreditCard, Clock, ChevronRight
+  CreditCard, Clock, ChevronRight, ChevronLeft
 } from 'lucide-react';
 import { formatCurrency } from '../lib/formatters';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -55,6 +55,10 @@ export default function ContasAPagar() {
   const [contas, setContas] = useState<ContaPagar[]>([]);
   const [loading, setLoading] = useState(true);
   const [aba, setAba] = useState<'faturas' | 'lista'>('faturas');
+  const [mesSelecionado, setMesSelecionado] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
 
   // lista
   const [busca, setBusca] = useState('');
@@ -385,12 +389,118 @@ export default function ContasAPagar() {
         </div>
 
         {/* ── ABA: POR FATURA ── */}
-        {aba === 'faturas' && (
-          <div className="p-4 space-y-3">
-            {faturas.length === 0 && (
-              <div className="text-center py-12 text-slate-400">Nenhuma fatura encontrada</div>
+        {aba === 'faturas' && (() => {
+          // meses disponíveis (com ou sem dados) — sempre mostra ±3 ao redor do atual
+          const mesesComDados = [...new Set(faturas.map(f => f.mesAno))].sort();
+          const gerarMeses = () => {
+            const set = new Set(mesesComDados);
+            // garante que o mês selecionado e vizinhos existam
+            const [y, m] = mesSelecionado.split('-').map(Number);
+            for (let d = -2; d <= 3; d++) {
+              const dt = new Date(y, m - 1 + d, 1);
+              set.add(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`);
+            }
+            return [...set].sort();
+          };
+          const todosMeses = gerarMeses();
+          const idxAtual = todosMeses.indexOf(mesSelecionado);
+
+          const navMes = (dir: 1 | -1) => {
+            const novIdx = idxAtual + dir;
+            if (novIdx >= 0 && novIdx < todosMeses.length) setMesSelecionado(todosMeses[novIdx]);
+          };
+
+          const faturasMes = faturas.filter(f => f.mesAno === mesSelecionado);
+          const totalMesPendente = faturasMes.reduce((s, f) => s + f.totalPendente, 0);
+          const totalMesPago = faturasMes.reduce((s, f) => s + f.totalPago, 0);
+          const totalMesVencido = faturasMes.filter(f => f.status === 'vencida').reduce((s, f) => s + f.totalPendente, 0);
+
+          const totalPorMes = (mes: string) =>
+            faturas.filter(f => f.mesAno === mes).reduce((s, f) => s + f.totalPendente + f.totalPago, 0);
+
+          return (
+          <div className="space-y-0">
+            {/* Navegação de meses — pills scrolláveis */}
+            <div className="px-4 pt-4 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => navMes(-1)}
+                  disabled={idxAtual === 0}
+                  className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+                <div className="flex gap-1.5 overflow-x-auto flex-1 scrollbar-hide pb-0.5">
+                  {todosMeses.map(mes => {
+                    const total = totalPorMes(mes);
+                    const temDados = mesesComDados.includes(mes);
+                    const isSelected = mes === mesSelecionado;
+                    return (
+                      <button
+                        key={mes}
+                        onClick={() => setMesSelecionado(mes)}
+                        className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                          isSelected
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                            : temDados
+                            ? 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+                            : 'bg-slate-50 text-slate-400 border-slate-100 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="block">{formatMesAno(mes)}</span>
+                        {temDados && (
+                          <span className={`block text-[10px] mt-0.5 ${isSelected ? 'text-blue-200' : 'text-slate-400'}`}>
+                            {formatCurrency(total)}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  onClick={() => navMes(1)}
+                  disabled={idxAtual === todosMeses.length - 1}
+                  className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Resumo do mês */}
+            {faturasMes.length > 0 && (
+              <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex flex-wrap gap-4">
+                <div>
+                  <p className="text-xs text-slate-500">Pendente no mês</p>
+                  <p className="text-base font-bold text-slate-800">{formatCurrency(totalMesPendente)}</p>
+                </div>
+                {totalMesPago > 0 && (
+                  <div>
+                    <p className="text-xs text-slate-500">Já pago</p>
+                    <p className="text-base font-bold text-emerald-600">{formatCurrency(totalMesPago)}</p>
+                  </div>
+                )}
+                {totalMesVencido > 0 && (
+                  <div>
+                    <p className="text-xs text-slate-500">Vencido</p>
+                    <p className="text-base font-bold text-red-600">{formatCurrency(totalMesVencido)}</p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs text-slate-500">Cartões</p>
+                  <p className="text-base font-bold text-slate-700">{faturasMes.length}</p>
+                </div>
+              </div>
             )}
-            {faturas.map(fatura => {
+
+            {/* Faturas do mês */}
+            <div className="p-4 space-y-3">
+            {faturasMes.length === 0 && (
+              <div className="text-center py-12 text-slate-400">Nenhuma fatura em {formatMesAno(mesSelecionado)}</div>
+            )}
+            {faturasMes.map(fatura => {
               const style = getFaturaStatusStyle(fatura.status);
               const expanded = expandidas.has(fatura.key);
               return (
@@ -483,8 +593,10 @@ export default function ContasAPagar() {
                 </div>
               );
             })}
+            </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* ── ABA: LISTA ── */}
         {aba === 'lista' && (
