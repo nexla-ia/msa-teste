@@ -209,6 +209,8 @@ export default function ProgramasClubes() {
       return;
     }
 
+    const termoDigitos = termo.replace(/\D/g, '');
+
     const filtrados = programasClubes.filter((item) => {
       const parceiroNome = (
         item.nome_parceiro ||
@@ -223,8 +225,8 @@ export default function ProgramasClubes() {
 
       return (
         parceiroNome.includes(termo) ||
-        cpfParceiro.includes(termo.replace(/\D/g, '')) ||
-        telefoneParceiro.includes(termo.replace(/\D/g, '')) ||
+        (termoDigitos.length > 0 && cpfParceiro.includes(termoDigitos)) ||
+        (termoDigitos.length > 0 && telefoneParceiro.includes(termoDigitos)) ||
         (item.email?.toLowerCase() || '').includes(termo) ||
         (item.n_fidelidade?.toLowerCase() || '').includes(termo) ||
         programaNome.includes(termo) ||
