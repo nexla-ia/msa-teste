@@ -73,6 +73,7 @@ export default function Layout({ children }: LayoutProps) {
   ];
 
   const allFinanceiroItems = [
+    { path: '/dashboard-financeiro', label: 'Dashboard Financeiro', icon: LayoutDashboard, recurso: 'contas_a_pagar' },
     { path: '/contas-receber', label: 'Contas a Receber', icon: DollarSign, recurso: 'contas_receber' },
     { path: '/contas-a-pagar', label: 'Contas a Pagar', icon: DollarSign, recurso: 'contas_a_pagar' },
   ];

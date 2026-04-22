@@ -256,7 +256,7 @@ CREATE TABLE IF NOT EXISTS public.contas_a_pagar (
   PRIMARY KEY (id),
   CONSTRAINT contas_a_pagar_check CHECK ((numero_parcela <= total_parcelas)),
   CONSTRAINT contas_a_pagar_numero_parcela_check CHECK ((numero_parcela > 0)),
-  CONSTRAINT contas_a_pagar_origem_tipo_check CHECK ((origem_tipo = ANY (ARRAY['compra'::text, 'compra_bonificada'::text, 'clube'::text, 'transferencia_pontos'::text, 'ajuste'::text, 'outro'::text]))),
+  CONSTRAINT contas_a_pagar_origem_tipo_check CHECK ((origem_tipo = ANY (ARRAY['compra'::text, 'compra_bonificada'::text, 'clube'::text, 'transferencia_pontos'::text, 'ajuste'::text, 'outro'::text, 'venda'::text]))),
   CONSTRAINT contas_a_pagar_status_pagamento_check CHECK ((status_pagamento = ANY (ARRAY['pendente'::text, 'pago'::text, 'atrasado'::text, 'cancelado'::text]))),
   CONSTRAINT contas_a_pagar_total_parcelas_check CHECK ((total_parcelas > 0)),
   CONSTRAINT contas_a_pagar_valor_parcela_check CHECK ((valor_parcela >= (0)::numeric))
@@ -4812,6 +4812,77 @@ END;
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.registrar_conta_pagar_venda()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+  v_data_vencimento date;
+  v_parceiro_nome text;
+  v_programa_nome text;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    DELETE FROM contas_a_pagar
+    WHERE origem_tipo = 'venda' AND origem_id = OLD.id AND status_pagamento = 'pendente';
+    RETURN OLD;
+  END IF;
+
+  IF TG_OP = 'UPDATE' THEN
+    DELETE FROM contas_a_pagar
+    WHERE origem_tipo = 'venda' AND origem_id = NEW.id AND status_pagamento = 'pendente';
+  END IF;
+
+  SELECT p.nome_parceiro INTO v_parceiro_nome FROM parceiros p WHERE p.id = NEW.parceiro_id;
+  SELECT pf.nome INTO v_programa_nome FROM programas_fidelidade pf WHERE pf.id = NEW.programa_id;
+
+  IF COALESCE(NEW.taxa_embarque, 0) > 0 AND NEW.cartao_taxa_embarque_id IS NOT NULL THEN
+    v_data_vencimento := calcular_data_vencimento('Crédito', NEW.cartao_taxa_embarque_id, NULL, NEW.data_venda, 1);
+    INSERT INTO contas_a_pagar (
+      origem_tipo, origem_id, parceiro_id, programa_id, descricao,
+      data_vencimento, valor_parcela, numero_parcela, total_parcelas,
+      forma_pagamento, cartao_id, status_pagamento
+    ) VALUES (
+      'venda', NEW.id, NEW.parceiro_id, NEW.programa_id,
+      format('Taxa Embarque - %s / %s', COALESCE(v_parceiro_nome, ''), COALESCE(v_programa_nome, '')),
+      v_data_vencimento, NEW.taxa_embarque, 1, 1,
+      'Crédito', NEW.cartao_taxa_embarque_id, 'pendente'
+    );
+  END IF;
+
+  IF COALESCE(NEW.taxa_resgate, 0) > 0 AND NEW.cartao_taxa_resgate_id IS NOT NULL THEN
+    v_data_vencimento := calcular_data_vencimento('Crédito', NEW.cartao_taxa_resgate_id, NULL, NEW.data_venda, 1);
+    INSERT INTO contas_a_pagar (
+      origem_tipo, origem_id, parceiro_id, programa_id, descricao,
+      data_vencimento, valor_parcela, numero_parcela, total_parcelas,
+      forma_pagamento, cartao_id, status_pagamento
+    ) VALUES (
+      'venda', NEW.id, NEW.parceiro_id, NEW.programa_id,
+      format('Taxa Resgate - %s / %s', COALESCE(v_parceiro_nome, ''), COALESCE(v_programa_nome, '')),
+      v_data_vencimento, NEW.taxa_resgate, 1, 1,
+      'Crédito', NEW.cartao_taxa_resgate_id, 'pendente'
+    );
+  END IF;
+
+  IF COALESCE(NEW.taxa_bagagem, 0) > 0 AND NEW.cartao_taxa_bagagem_id IS NOT NULL THEN
+    v_data_vencimento := calcular_data_vencimento('Crédito', NEW.cartao_taxa_bagagem_id, NULL, NEW.data_venda, 1);
+    INSERT INTO contas_a_pagar (
+      origem_tipo, origem_id, parceiro_id, programa_id, descricao,
+      data_vencimento, valor_parcela, numero_parcela, total_parcelas,
+      forma_pagamento, cartao_id, status_pagamento
+    ) VALUES (
+      'venda', NEW.id, NEW.parceiro_id, NEW.programa_id,
+      format('Taxa Bagagem - %s / %s', COALESCE(v_parceiro_nome, ''), COALESCE(v_programa_nome, '')),
+      v_data_vencimento, NEW.taxa_bagagem, 1, 1,
+      'Crédito', NEW.cartao_taxa_bagagem_id, 'pendente'
+    );
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.registrar_conta_pagar_compra()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -6405,6 +6476,11 @@ CREATE TRIGGER trigger_transferencia_pontos_delete
   AFTER DELETE ON public.transferencia_pontos
   FOR EACH ROW
   EXECUTE FUNCTION processar_transferencia_origem_delete();
+
+DROP TRIGGER IF EXISTS trigger_registrar_conta_pagar_venda ON public.vendas;
+CREATE TRIGGER trigger_registrar_conta_pagar_venda
+  AFTER INSERT OR UPDATE OR DELETE ON public.vendas
+  FOR EACH ROW EXECUTE FUNCTION registrar_conta_pagar_venda();
 
 DROP TRIGGER IF EXISTS decrementar_cpf_ao_deletar_venda ON public.vendas;
 CREATE TRIGGER decrementar_cpf_ao_deletar_venda
