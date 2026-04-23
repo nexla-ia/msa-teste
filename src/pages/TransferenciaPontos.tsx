@@ -724,20 +724,16 @@ export default function TransferenciaPontos() {
       message: 'Excluir esta transferência reverterá as alterações no estoque (origem e destino). Se os pontos do destino já foram vendidos, a reversão será parcial. Deseja continuar?',
       onConfirm: async () => {
         try {
-          // 1. Admin mode ativa bypass de validações de saldo no banco
-          if (isAdmin && usuario) {
-            await supabase.rpc('set_admin_mode', { usuario_id: usuario.id, is_admin: true });
-          }
+          // Reverter estoque e contas_receber
+          // Admin usa wrapper que seta app.is_admin na mesma transação (transaction-local)
+          const rpcName = (isAdmin && usuario)
+            ? 'admin_reverter_transferencia_pontos'
+            : 'reverter_transferencia_pontos';
+          const rpcParams = (isAdmin && usuario)
+            ? { p_transfer_id: id, p_usuario_id: usuario.id }
+            : { p_transfer_id: id };
 
-          // 2. Reverter estoque e contas_receber
-          const { data: revertResult, error: revertError } = await supabase.rpc(
-            'reverter_transferencia_pontos',
-            { p_transfer_id: id }
-          );
-
-          if (isAdmin && usuario) {
-            await supabase.rpc('set_admin_mode', { usuario_id: usuario.id, is_admin: false });
-          }
+          const { data: revertResult, error: revertError } = await supabase.rpc(rpcName, rpcParams);
 
           if (revertError) throw new Error(`Erro ao reverter estoque: ${revertError.message}`);
 

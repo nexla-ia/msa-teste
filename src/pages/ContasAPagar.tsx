@@ -29,7 +29,7 @@ type ContaPagar = {
   created_at: string;
   parceiro?: { nome_parceiro: string };
   programa?: { nome: string };
-  cartao?: { cartao: string; banco_emissor?: string };
+  cartao?: { cartao: string; banco_emissor?: string; tipo_cartao?: string; cartao_principal_id?: string | null; cartao_principal?: { cartao: string } | null };
   conta_bancaria?: { nome_banco: string };
   criado_por?: { nome: string };
 };
@@ -114,7 +114,7 @@ export default function ContasAPagar() {
           *,
           parceiro:parceiros(nome_parceiro),
           programa:programas_fidelidade(nome),
-          cartao:cartoes_credito(cartao, banco_emissor),
+          cartao:cartoes_credito(cartao, banco_emissor, tipo_cartao, cartao_principal_id, cartao_principal:cartao_principal_id(cartao)),
           conta_bancaria:contas_bancarias(nome_banco),
           criado_por:usuarios!contas_a_pagar_created_by_fkey(nome)
         `)
@@ -153,18 +153,31 @@ export default function ContasAPagar() {
       }));
   };
 
+  // retorna { id, nome } do cartão principal (ou do próprio cartão se já for principal)
+  const getPrincipalInfo = (c: ContaPagar): { id: string; nome: string } | null => {
+    if (!c.cartao || !c.cartao_id) return null;
+    const isSubCard = c.cartao.tipo_cartao === 'adicional' || c.cartao.tipo_cartao === 'virtual';
+    if (isSubCard && c.cartao.cartao_principal_id) {
+      const nome = c.cartao.cartao_principal?.cartao || c.cartao.cartao;
+      return { id: c.cartao.cartao_principal_id, nome };
+    }
+    return { id: c.cartao_id, nome: c.cartao.cartao };
+  };
+
   // ── faturas (por cartão dentro do mês) ─────────────────────────────────
   const calcularFaturas = (mes: string): FaturaGroup[] => {
     const map = new Map<string, ContaPagar[]>();
     contas.filter(c => c.status_pagamento !== 'cancelado' && c.data_vencimento.startsWith(mes))
       .forEach(c => {
-        const key = c.cartao_id || 'sem-cartao';
+        const principal = getPrincipalInfo(c);
+        const key = principal?.id || c.cartao_id || 'sem-cartao';
         if (!map.has(key)) map.set(key, []);
         map.get(key)!.push(c);
       });
 
-    return [...map.entries()].map(([, items]) => {
+    return [...map.entries()].map(([key, items]) => {
       const first = items[0];
+      const principal = getPrincipalInfo(first);
       const totalPendente = items.filter(c => c.status_pagamento === 'pendente').reduce((s, c) => s + c.valor_parcela, 0);
       const totalPago = items.filter(c => c.status_pagamento === 'pago').reduce((s, c) => s + (c.valor_pago || 0), 0);
       const qtdPendente = items.filter(c => c.status_pagamento === 'pendente').length;
@@ -173,12 +186,12 @@ export default function ContasAPagar() {
       if (qtdPendente === 0) status = 'paga';
       else if (vencidas) status = 'vencida';
       else if (totalPago > 0) status = 'parcial';
-      const cartaoNome = first.cartao?.cartao
-        ? `${first.cartao.cartao}${first.cartao.banco_emissor ? ` · ${first.cartao.banco_emissor}` : ''}`
+      const cartaoNome = principal
+        ? `${principal.nome}${first.cartao?.banco_emissor ? ` · ${first.cartao.banco_emissor}` : ''}`
         : first.forma_pagamento || 'Sem cartão';
       return {
-        key: first.cartao_id || 'sem-cartao',
-        cartaoNome, cartaoId: first.cartao_id, mesAno: mes,
+        key,
+        cartaoNome, cartaoId: principal?.id || null, mesAno: mes,
         contas: items, totalPendente, totalPago, qtdPendente, status,
       };
     }).sort((a, b) => b.totalPendente - a.totalPendente);
@@ -196,7 +209,13 @@ export default function ContasAPagar() {
       if (efStatus !== detalheStatus) return false;
     }
     if (detalheForma && c.forma_pagamento !== detalheForma) return false;
-    if (detalheCartao && (c.cartao?.cartao || '') !== detalheCartao) return false;
+    if (detalheCartao) {
+      const isSubCard = c.cartao?.tipo_cartao === 'adicional' || c.cartao?.tipo_cartao === 'virtual';
+      const nomePrincipal = (isSubCard && c.cartao?.cartao_principal?.cartao)
+        ? c.cartao.cartao_principal.cartao
+        : (c.cartao?.cartao || '');
+      if (nomePrincipal !== detalheCartao) return false;
+    }
     if (detalheBusca) {
       const q = detalheBusca.toLowerCase();
       if (!c.descricao.toLowerCase().includes(q) &&
@@ -207,7 +226,13 @@ export default function ContasAPagar() {
   });
 
   const formasDoMes = [...new Set(contasDoMes.map(c => c.forma_pagamento).filter(Boolean))] as string[];
-  const cartoesDoMes = [...new Set(contasDoMes.map(c => c.cartao?.cartao).filter(Boolean))] as string[];
+  const cartoesDoMes = [...new Set(
+    contasDoMes.map(c => {
+      if (!c.cartao) return null;
+      const isSubCard = c.cartao.tipo_cartao === 'adicional' || c.cartao.tipo_cartao === 'virtual';
+      return (isSubCard && c.cartao.cartao_principal?.cartao) ? c.cartao.cartao_principal.cartao : c.cartao.cartao;
+    }).filter(Boolean)
+  )] as string[];
 
   // ── pagamento parcela ───────────────────────────────────────────────────
   const abrirModalPagar = (conta: ContaPagar) => {
@@ -583,7 +608,16 @@ export default function ContasAPagar() {
                             <td className="px-3 py-2.5 whitespace-nowrap text-slate-500">
                               {c.valor_pago != null ? formatCurrency(c.valor_pago) : '—'}
                             </td>
-                            <td className="px-3 py-2.5 whitespace-nowrap text-slate-500 max-w-[120px] truncate">{c.cartao?.cartao || '—'}</td>
+                            <td className="px-3 py-2.5 whitespace-nowrap text-slate-500 max-w-[140px]">
+                              {c.cartao ? (
+                                <div className="truncate">
+                                  <span>{(() => { const isSubCard = c.cartao.tipo_cartao === 'adicional' || c.cartao.tipo_cartao === 'virtual'; return (isSubCard && c.cartao.cartao_principal?.cartao) ? c.cartao.cartao_principal.cartao : c.cartao.cartao; })()}</span>
+                                  {(c.cartao.tipo_cartao === 'adicional' || c.cartao.tipo_cartao === 'virtual') && (
+                                    <span className="ml-1 text-[9px] bg-slate-100 text-slate-500 px-1 py-0.5 rounded">{c.cartao.tipo_cartao}</span>
+                                  )}
+                                </div>
+                              ) : '—'}
+                            </td>
                             <td className="px-3 py-2.5 whitespace-nowrap text-slate-400">{getTipoLabel(c.origem_tipo)}</td>
                             <td className="px-3 py-2.5 whitespace-nowrap">
                               {c.status_pagamento === 'pendente' && (

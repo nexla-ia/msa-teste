@@ -106,6 +106,7 @@ export default function DashboardFinanceiro() {
   const [dataCR, setDataCR] = useState<ContaReceber[]>([]);
   const [dataAP, setDataAP] = useState<ContaPagar[]>([]);
   const [cartoesMap, setCartoesMap] = useState<Record<string, string>>({});
+  const [principalIdMap, setPrincipalIdMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [lastUpd, setLastUpd] = useState('');
 
@@ -126,15 +127,19 @@ export default function DashboardFinanceiro() {
     const [{ data: cr }, { data: ap }, { data: cartoes }] = await Promise.all([
       supabase.from('contas_receber').select('*').order('data_vencimento', { ascending: true }),
       supabase.from('contas_a_pagar').select('*').order('data_vencimento', { ascending: true }),
-      supabase.from('cartoes_credito').select('id,cartao,banco_emissor').order('cartao'),
+      supabase.from('cartoes_credito').select('id,cartao,banco_emissor,tipo_cartao,cartao_principal_id').order('cartao'),
     ]);
     setDataCR((cr as ContaReceber[]) || []);
     setDataAP((ap as ContaPagar[]) || []);
     const map: Record<string, string> = {};
-    (cartoes || []).forEach((c: { id: string; cartao: string; banco_emissor: string }) => {
+    const pidMap: Record<string, string> = {};
+    (cartoes || []).forEach((c: { id: string; cartao: string; banco_emissor: string; tipo_cartao?: string; cartao_principal_id?: string | null }) => {
       map[c.id] = `${c.cartao} (${c.banco_emissor})`;
+      const isSubCard = c.tipo_cartao === 'adicional' || c.tipo_cartao === 'virtual';
+      pidMap[c.id] = (isSubCard && c.cartao_principal_id) ? c.cartao_principal_id : c.id;
     });
     setCartoesMap(map);
+    setPrincipalIdMap(pidMap);
     setLastUpd(new Date().toLocaleTimeString('pt-BR'));
     setLoading(false);
   }, []);
@@ -180,14 +185,17 @@ export default function DashboardFinanceiro() {
       if (selMoAP && mkKey(r.data_vencimento) !== selMoAP) return false;
       if (filtStatusAP && filtStatusAP !== eff && !(filtStatusAP === 'pago' && r.status_pagamento === 'quitado')) return false;
       if (filtFormaAP && r.forma_pagamento !== filtFormaAP) return false;
-      if (filtCartaoAP && r.cartao_id !== filtCartaoAP) return false;
+      if (filtCartaoAP && (r.cartao_id ? (principalIdMap[r.cartao_id] || r.cartao_id) : null) !== filtCartaoAP) return false;
       if (filtBuscaAP && !((r.descricao || r.origem_tipo || '').toLowerCase().includes(filtBuscaAP.toLowerCase()))) return false;
       return true;
     });
 
   // ── Month cards helper ─────────────────────────────────────────────────────
   const byMonth = (data: (ContaReceber | ContaPagar)[], cartaoFilter?: string) => {
-    const filtered = cartaoFilter ? data.filter(r => (r as ContaPagar).cartao_id === cartaoFilter) : data;
+    const filtered = cartaoFilter ? data.filter(r => {
+      const cid = (r as ContaPagar).cartao_id;
+      return cid ? (principalIdMap[cid] || cid) === cartaoFilter : false;
+    }) : data;
     const map: Record<string, { rows: typeof filtered; total: number; pago: number }> = {};
     filtered.forEach(r => {
       const k = mkKey(r.data_vencimento);
@@ -201,8 +209,9 @@ export default function DashboardFinanceiro() {
   };
 
   const formasAP     = [...new Set(dataAP.map(r => r.forma_pagamento).filter(Boolean))].sort() as string[];
-  const cartaoIdsAP  = [...new Set(dataAP.map(r => r.cartao_id).filter(Boolean))].sort((a, b) =>
-    (cartoesMap[a!] || '').localeCompare(cartoesMap[b!] || '')) as string[];
+  const cartaoIdsAP  = [...new Set(
+    dataAP.map(r => r.cartao_id ? (principalIdMap[r.cartao_id] || r.cartao_id) : null).filter(Boolean)
+  )].sort((a, b) => (cartoesMap[a!] || '').localeCompare(cartoesMap[b!] || '')) as string[];
 
   // ── Charts ─────────────────────────────────────────────────────────────────
   const fluxoData = () => {
@@ -580,8 +589,17 @@ export default function DashboardFinanceiro() {
                     <td className="px-4 py-3"><StatusBadge status={r.status_pagamento} dv={r.data_vencimento} /></td>
                     <td className="px-4 py-3 text-slate-500">{fmtDate(r.data_pagamento)}</td>
                     <td className="px-4 py-3 text-emerald-600 font-medium">{r.valor_pago ? fmtBRL(r.valor_pago) : <span className="text-slate-300">—</span>}</td>
-                    <td className="px-4 py-3 text-blue-600 text-xs max-w-[140px] truncate" title={r.cartao_id ? cartoesMap[r.cartao_id] || '' : ''}>
-                      {r.cartao_id ? (cartoesMap[r.cartao_id] || r.cartao_id.substring(0, 8) + '...') : <span className="text-slate-300">—</span>}
+                    <td className="px-4 py-3 text-blue-600 text-xs max-w-[160px]">
+                      {r.cartao_id ? (() => {
+                        const pid = principalIdMap[r.cartao_id] || r.cartao_id;
+                        const isSub = pid !== r.cartao_id;
+                        return (
+                          <div className="truncate">
+                            <span title={cartoesMap[pid] || ''}>{cartoesMap[pid] || r.cartao_id.substring(0, 8) + '...'}</span>
+                            {isSub && <span className="ml-1 text-[9px] bg-slate-100 text-slate-500 px-1 py-0.5 rounded">adic.</span>}
+                          </div>
+                        );
+                      })() : <span className="text-slate-300">—</span>}
                     </td>
                     <td className="px-4 py-3 text-slate-400 text-xs">{r.origem_tipo || '—'}</td>
                   </tr>
