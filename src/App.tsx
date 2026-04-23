@@ -48,6 +48,8 @@ import Lancamentos from './pages/Lancamentos';
 import DRE from './pages/DRE';
 import Orcamento from './pages/Orcamento';
 import ConciliacaoBancaria from './pages/ConciliacaoBancaria';
+import VendaDireta from './pages/VendaDireta';
+import VendaUpload from './pages/VendaUpload';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { usuario, loading } = useAuth();
@@ -150,6 +152,8 @@ function AppRoutes() {
         <Route path="/dre" element={<PermissionRoute recurso="contas_a_pagar"><DRE /></PermissionRoute>} />
         <Route path="/orcamento" element={<PermissionRoute recurso="contas_a_pagar"><Orcamento /></PermissionRoute>} />
         <Route path="/conciliacao-bancaria" element={<PermissionRoute recurso="contas_a_pagar"><ConciliacaoBancaria /></PermissionRoute>} />
+        <Route path="/venda-direta" element={<PermissionRoute recurso="vendas"><VendaDireta /></PermissionRoute>} />
+        <Route path="/venda-upload" element={<PermissionRoute recurso="vendas"><VendaUpload /></PermissionRoute>} />
         <Route path="*" element={<Navigate to="/dashboard" />} />
       </Routes>
     </Layout>

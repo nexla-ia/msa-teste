@@ -25,7 +25,9 @@ import {
   BarChart2,
   Target,
   RefreshCw,
-  BookOpen
+  BookOpen,
+  Send,
+  Upload
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
@@ -74,6 +76,8 @@ export default function Layout({ children }: LayoutProps) {
     { path: '/compra-bonificada', label: 'Compra Bonificada', icon: Gift, recurso: 'compra_bonificada' },
     { path: '/transferencia-pontos', label: 'Transferência de Pontos/Milhas', icon: ArrowRightLeft, recurso: 'transferencia_pontos' },
     { path: '/transferencia-pessoas', label: 'Transferência entre Pessoas', icon: Users, recurso: 'transferencia_pessoas' },
+    { path: '/venda-direta', label: 'Venda Direta', icon: Send, recurso: 'vendas' },
+    { path: '/venda-upload', label: 'Venda por Upload', icon: Upload, recurso: 'vendas' },
   ];
 
   const allFinanceiroItems = [
