@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Upload, Trash2, CheckCircle, AlertCircle, FileSpreadsheet, X } from 'lucide-react';
+import { Upload, Trash2, CheckCircle, AlertCircle, FileSpreadsheet, X, Construction } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -316,6 +316,12 @@ export default function VendaUpload() {
           Importar Planilha
         </button>
         <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={onFileChange} />
+      </div>
+
+      {/* Banner em desenvolvimento */}
+      <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+        <Construction className="w-5 h-5 text-amber-500 shrink-0" />
+        <p className="text-sm text-amber-700 font-medium">Esta tela está em desenvolvimento. Funcionalidades podem estar incompletas.</p>
       </div>
 
       {/* KPIs */}

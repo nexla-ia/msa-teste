@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Pencil, Trash2, Send } from 'lucide-react';
+import { Plus, Pencil, Trash2, Send, Construction } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import Modal from '../components/Modal';
@@ -173,6 +173,12 @@ export default function VendaDireta() {
           className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors text-sm font-medium">
           <Plus className="w-4 h-4" /> Nova Emissão
         </button>
+      </div>
+
+      {/* Banner em desenvolvimento */}
+      <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+        <Construction className="w-5 h-5 text-amber-500 shrink-0" />
+        <p className="text-sm text-amber-700 font-medium">Esta tela está em desenvolvimento. Funcionalidades podem estar incompletas.</p>
       </div>
 
       {/* KPIs */}
