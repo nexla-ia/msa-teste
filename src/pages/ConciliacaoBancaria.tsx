@@ -17,14 +17,17 @@ type ConciliacaoItem = {
   valor_extrato: number;
   tipo: 'credito' | 'debito';
   lancamento_id: string | null;
+  venda_id: string | null;
   status: 'conciliado' | 'pendente' | 'divergente';
   observacao: string | null;
   conta_bancaria?: { nome_banco: string } | null;
   lancamento?: { descricao: string; valor: number } | null;
+  venda?: { ordem_compra: string | null; valor_total: number; clientes: { nome_cliente: string } | null; parceiros: { nome_parceiro: string } | null } | null;
 };
 
 type ContaBancaria = { id: string; nome_banco: string };
 type Lancamento = { id: string; descricao: string; valor: number; tipo: string; data_lancamento: string };
+type Venda = { id: string; ordem_compra: string | null; valor_total: number; data_venda: string; clientes: { nome_cliente: string } | null; parceiros: { nome_parceiro: string } | null };
 
 const MES_FULL = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -53,6 +56,7 @@ export default function ConciliacaoBancaria() {
   const [items, setItems] = useState<ConciliacaoItem[]>([]);
   const [contas, setContas] = useState<ContaBancaria[]>([]);
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
+  const [vendas, setVendas] = useState<Venda[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [vinculoOpen, setVinculoOpen] = useState(false);
@@ -84,9 +88,13 @@ export default function ConciliacaoBancaria() {
     const inicio = `${mesSel}-01`;
     const fim = `${mesSel}-${String(new Date(ano, m, 0).getDate()).padStart(2, '0')}`;
 
-    const [concRes, lancRes] = await Promise.all([
+    // Vendas não conciliadas dos últimos 6 meses (pagamento pode vir em mês diferente)
+    const seisAtras = new Date(ano, m - 7, 1);
+    const seisAtrasStr = `${seisAtras.getFullYear()}-${String(seisAtras.getMonth() + 1).padStart(2, '0')}-01`;
+
+    const [concRes, lancRes, vendasRes] = await Promise.all([
       supabase.from('conciliacao_bancaria')
-        .select('*, conta_bancaria:contas_bancarias(nome_banco), lancamento:lancamentos_financeiros(descricao,valor)')
+        .select('*, conta_bancaria:contas_bancarias(nome_banco), lancamento:lancamentos_financeiros(descricao,valor), venda:vendas(ordem_compra,valor_total,clientes(nome_cliente),parceiros(nome_parceiro))')
         .eq('conta_bancaria_id', contaSel)
         .gte('data_extrato', inicio)
         .lte('data_extrato', fim)
@@ -97,9 +105,15 @@ export default function ConciliacaoBancaria() {
         .lte('data_lancamento', fim)
         .eq('conta_bancaria_id', contaSel)
         .order('data_lancamento', { ascending: false }),
+      supabase.from('vendas')
+        .select('id, ordem_compra, valor_total, data_venda, clientes(nome_cliente), parceiros(nome_parceiro)')
+        .eq('conciliado', false)
+        .gte('data_venda', seisAtrasStr)
+        .order('data_venda', { ascending: false }),
     ]);
     setItems(concRes.data || []);
     setLancamentos(lancRes.data || []);
+    setVendas((vendasRes.data || []) as Venda[]);
     setLoading(false);
   }, [contaSel, mesSel]);
 
@@ -135,12 +149,12 @@ export default function ConciliacaoBancaria() {
       const divergente = lanc && Math.abs(lanc.valor - vinculoItem.valor_extrato) > 0.01;
       const { error } = await supabase.from('conciliacao_bancaria').update({
         lancamento_id: lancamentoId,
+        venda_id: null,
         status: divergente ? 'divergente' : 'conciliado',
         data_conciliacao: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }).eq('id', vinculoItem.id);
       if (error) throw error;
-      // Marca o lançamento como conciliado
       await supabase.from('lancamentos_financeiros').update({ conciliado: true }).eq('id', lancamentoId);
       setVinculoOpen(false);
       setVinculoItem(null);
@@ -151,10 +165,38 @@ export default function ConciliacaoBancaria() {
     }
   };
 
+  const handleVincularVenda = async (vendaId: string) => {
+    if (!vinculoItem) return;
+    try {
+      const venda = vendas.find(v => v.id === vendaId);
+      const divergente = venda && Math.abs(venda.valor_total - vinculoItem.valor_extrato) > 0.01;
+      const { error } = await supabase.from('conciliacao_bancaria').update({
+        venda_id: vendaId,
+        lancamento_id: null,
+        status: divergente ? 'divergente' : 'conciliado',
+        data_conciliacao: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq('id', vinculoItem.id);
+      if (error) throw error;
+      await supabase.from('vendas').update({ conciliado: true }).eq('id', vendaId);
+      setVinculoOpen(false);
+      setVinculoItem(null);
+      loadData();
+      setDialog({ isOpen: true, type: 'success', title: 'Conciliado!', message: divergente ? 'Venda vinculada com divergência de valor.' : 'Venda conciliada com sucesso!' });
+    } catch (err: any) {
+      setDialog({ isOpen: true, type: 'error', title: 'Erro', message: err.message });
+    }
+  };
+
   const handleDesconciliar = async (item: ConciliacaoItem) => {
-    if (!item.lancamento_id) return;
-    await supabase.from('conciliacao_bancaria').update({ lancamento_id: null, status: 'pendente', data_conciliacao: null, updated_at: new Date().toISOString() }).eq('id', item.id);
-    await supabase.from('lancamentos_financeiros').update({ conciliado: false }).eq('id', item.lancamento_id);
+    await supabase.from('conciliacao_bancaria').update({
+      lancamento_id: null, venda_id: null, status: 'pendente',
+      data_conciliacao: null, updated_at: new Date().toISOString(),
+    }).eq('id', item.id);
+    if (item.lancamento_id)
+      await supabase.from('lancamentos_financeiros').update({ conciliado: false }).eq('id', item.lancamento_id);
+    if (item.venda_id)
+      await supabase.from('vendas').update({ conciliado: false }).eq('id', item.venda_id);
     loadData();
   };
 
@@ -294,9 +336,18 @@ export default function ConciliacaoBancaria() {
                         <td className={`px-4 py-3 font-semibold ${item.tipo === 'credito' ? 'text-green-600' : 'text-red-500'}`}>
                           {fmtBRL(item.valor_extrato)}
                         </td>
-                        <td className="px-4 py-3 text-slate-500 text-xs">
-                          {item.lancamento ? (
-                            <span className="text-blue-600 truncate block max-w-[160px]">{item.lancamento.descricao}</span>
+                        <td className="px-4 py-3 text-xs max-w-[180px]">
+                          {item.venda ? (
+                            <div>
+                              <span className="text-emerald-600 font-semibold block truncate">
+                                {item.venda.ordem_compra || 'Venda'}
+                              </span>
+                              <span className="text-slate-400 truncate block">
+                                {item.venda.clientes?.nome_cliente || item.venda.parceiros?.nome_parceiro || '—'}
+                              </span>
+                            </div>
+                          ) : item.lancamento ? (
+                            <span className="text-blue-600 truncate block">{item.lancamento.descricao}</span>
                           ) : (
                             <span className="text-slate-300">Não vinculado</span>
                           )}
@@ -382,45 +433,105 @@ export default function ConciliacaoBancaria() {
       </Modal>
 
       {/* Modal: Vincular lançamento */}
-      <Modal isOpen={vinculoOpen} onClose={() => { setVinculoOpen(false); setVinculoItem(null); }} title="Vincular Lançamento Financeiro">
-        {vinculoItem && (
-          <div className="space-y-4">
-            <div className="p-3 bg-slate-50 rounded-lg text-sm">
-              <p className="font-medium text-slate-700">Extrato: {vinculoItem.descricao_extrato}</p>
-              <p className={`font-bold mt-1 ${vinculoItem.tipo === 'credito' ? 'text-green-600' : 'text-red-500'}`}>
-                {fmtBRL(vinculoItem.valor_extrato)} ({vinculoItem.tipo === 'credito' ? 'Crédito' : 'Débito'})
-              </p>
-            </div>
-            <p className="text-sm text-slate-600">Selecione o lançamento correspondente:</p>
-            {lancamentos.filter(l => !l.id).length === 0 && lancamentos.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-4">Nenhum lançamento disponível neste período</p>
-            ) : (
-              <div className="space-y-2 max-h-72 overflow-y-auto">
-                {lancamentos.map(l => (
-                  <button key={l.id} onClick={() => handleVincular(l.id)}
-                    className="w-full text-left p-3 border border-slate-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-slate-700 truncate">{l.descricao}</p>
-                        <p className="text-xs text-slate-400 mt-0.5">{formatDate(l.data_lancamento)}</p>
-                      </div>
-                      <div className="text-right ml-3">
-                        <p className={`text-sm font-bold ${l.tipo === 'entrada' ? 'text-green-600' : 'text-red-500'}`}>{fmtBRL(l.valor)}</p>
-                        {Math.abs(l.valor - vinculoItem.valor_extrato) > 0.01 && (
-                          <p className="text-xs text-amber-600">⚠ valor diferente</p>
-                        )}
-                      </div>
-                    </div>
-                  </button>
-                ))}
+      <Modal isOpen={vinculoOpen} onClose={() => { setVinculoOpen(false); setVinculoItem(null); }} title="Vincular à Conciliação">
+        {vinculoItem && (() => {
+          const sugestoes = vendas.filter(v => Math.abs(v.valor_total - vinculoItem.valor_extrato) <= 0.01);
+          const demaisVendas = vendas.filter(v => Math.abs(v.valor_total - vinculoItem.valor_extrato) > 0.01);
+          return (
+            <div className="space-y-4">
+              {/* Info do extrato */}
+              <div className="p-3 bg-slate-50 rounded-lg text-sm border border-slate-200">
+                <p className="font-medium text-slate-700 truncate">{vinculoItem.descricao_extrato}</p>
+                <p className={`font-bold mt-1 ${vinculoItem.tipo === 'credito' ? 'text-green-600' : 'text-red-500'}`}>
+                  {fmtBRL(vinculoItem.valor_extrato)}
+                  <span className="font-normal text-slate-400 ml-2">{vinculoItem.tipo === 'credito' ? 'Crédito' : 'Débito'} · {formatDate(vinculoItem.data_extrato)}</span>
+                </p>
               </div>
-            )}
-            <button onClick={() => { setVinculoOpen(false); setVinculoItem(null); }}
-              className="w-full px-4 py-2 text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 text-sm">
-              Cancelar
-            </button>
-          </div>
-        )}
+
+              {/* Seção Vendas — para créditos */}
+              {vinculoItem.tipo === 'credito' && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Vendas</p>
+                  {vendas.length === 0 ? (
+                    <p className="text-sm text-slate-400 text-center py-3 bg-slate-50 rounded-lg">Nenhuma venda pendente de conciliação</p>
+                  ) : (
+                    <div className="space-y-2 max-h-52 overflow-y-auto">
+                      {/* Sugestões com valor idêntico — destacadas */}
+                      {sugestoes.map(v => (
+                        <button key={v.id} onClick={() => handleVincularVenda(v.id)}
+                          className="w-full text-left p-3 border-2 border-emerald-400 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <span className="text-[10px] bg-emerald-600 text-white px-1.5 py-0.5 rounded font-bold shrink-0">✨ Sugestão</span>
+                                <p className="text-sm font-semibold text-slate-800 truncate">{v.ordem_compra || '—'}</p>
+                              </div>
+                              <p className="text-xs text-slate-500 truncate">
+                                {v.clientes?.nome_cliente || v.parceiros?.nome_parceiro || '—'} · {new Date(v.data_venda + 'T00:00:00').toLocaleDateString('pt-BR')}
+                              </p>
+                            </div>
+                            <p className="text-sm font-bold text-emerald-700 shrink-0">{fmtBRL(v.valor_total)}</p>
+                          </div>
+                        </button>
+                      ))}
+                      {/* Demais vendas */}
+                      {demaisVendas.map(v => (
+                        <button key={v.id} onClick={() => handleVincularVenda(v.id)}
+                          className="w-full text-left p-3 border border-slate-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-slate-700 truncate">{v.ordem_compra || '—'} · {v.clientes?.nome_cliente || v.parceiros?.nome_parceiro || '—'}</p>
+                              <p className="text-xs text-slate-400">{new Date(v.data_venda + 'T00:00:00').toLocaleDateString('pt-BR')}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-sm font-bold text-slate-700">{fmtBRL(v.valor_total)}</p>
+                              <p className="text-[10px] text-amber-600">valor diferente</p>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Seção Lançamentos Financeiros */}
+              {lancamentos.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Lançamentos Financeiros</p>
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {lancamentos.map(l => (
+                      <button key={l.id} onClick={() => handleVincular(l.id)}
+                        className="w-full text-left p-3 border border-slate-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-slate-700 truncate">{l.descricao}</p>
+                            <p className="text-xs text-slate-400">{formatDate(l.data_lancamento)}</p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className={`text-sm font-bold ${l.tipo === 'entrada' ? 'text-green-600' : 'text-red-500'}`}>{fmtBRL(l.valor)}</p>
+                            {Math.abs(l.valor - vinculoItem.valor_extrato) > 0.01 && (
+                              <p className="text-[10px] text-amber-600">valor diferente</p>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {vinculoItem.tipo === 'credito' && vendas.length === 0 && lancamentos.length === 0 && (
+                <p className="text-sm text-slate-400 text-center py-4">Nenhum item disponível para vincular</p>
+              )}
+
+              <button onClick={() => { setVinculoOpen(false); setVinculoItem(null); }}
+                className="w-full px-4 py-2 text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 text-sm">
+                Cancelar
+              </button>
+            </div>
+          );
+        })()}
       </Modal>
 
       <ConfirmDialog isOpen={dialog.isOpen} type={dialog.type} title={dialog.title} message={dialog.message}
