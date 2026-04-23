@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Pencil, Trash2, Send, Construction } from 'lucide-react';
+import { Plus, Pencil, Trash2, Send, Construction, Search, Loader2, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import Modal from '../components/Modal';
@@ -21,12 +21,21 @@ interface Emissao {
   quantidade_passageiros: number;
   status: string;
   observacao: string | null;
+  venda_id: string | null;
   programa?: { nome: string } | null;
   parceiro?: { nome_parceiro: string } | null;
+  venda?: VendaRef | null;
 }
 
 interface Parceiro { id: string; nome_parceiro: string; }
 interface Programa { id: string; nome: string; }
+interface VendaRef {
+  id: string;
+  ordem_compra: string | null;
+  clientes: { nome_cliente: string } | null;
+  programas_fidelidade: { nome: string } | null;
+  quantidade_milhas: number;
+}
 
 const emptyForm = {
   data: new Date().toISOString().split('T')[0],
@@ -41,6 +50,7 @@ const emptyForm = {
   quantidade_passageiros: '1',
   status: 'ativo',
   observacao: '',
+  venda_id: '',
 };
 
 export default function VendaDireta() {
@@ -54,6 +64,9 @@ export default function VendaDireta() {
   const [form, setForm] = useState(emptyForm);
   const [busca, setBusca] = useState('');
   const [filtroStatus, setFiltroStatus] = useState('');
+  const [ocBusca, setOcBusca] = useState('');
+  const [vendaBuscada, setVendaBuscada] = useState<VendaRef | null>(null);
+  const [buscandoVenda, setBuscandoVenda] = useState(false);
 
   const [dialog, setDialog] = useState<{
     isOpen: boolean; type: 'success'|'error'|'confirm'|'warning';
@@ -66,7 +79,7 @@ export default function VendaDireta() {
     setLoading(true);
     const [{ data: em }, { data: pa }, { data: pr }] = await Promise.all([
       supabase.from('controle_emissoes')
-        .select('*, programa:programas_fidelidade(nome), parceiro:parceiros(nome_parceiro)')
+        .select('*, programa:programas_fidelidade(nome), parceiro:parceiros(nome_parceiro), venda:vendas(id,ordem_compra,clientes(nome_cliente),programas_fidelidade(nome),quantidade_milhas)')
         .eq('tipo_venda', 'direta')
         .order('data', { ascending: false }),
       supabase.from('parceiros').select('id,nome_parceiro').order('nome_parceiro'),
@@ -78,7 +91,13 @@ export default function VendaDireta() {
     setLoading(false);
   };
 
-  const openNew = () => { setEditing(null); setForm(emptyForm); setModalOpen(true); };
+  const openNew = () => {
+    setEditing(null);
+    setForm(emptyForm);
+    setOcBusca('');
+    setVendaBuscada(null);
+    setModalOpen(true);
+  };
   const openEdit = (e: Emissao) => {
     setEditing(e);
     setForm({
@@ -94,8 +113,29 @@ export default function VendaDireta() {
       quantidade_passageiros: String(e.quantidade_passageiros),
       status: e.status,
       observacao: e.observacao || '',
+      venda_id: e.venda_id || '',
     });
+    setOcBusca(e.venda?.ordem_compra || '');
+    setVendaBuscada(e.venda || null);
     setModalOpen(true);
+  };
+
+  const buscarVenda = async () => {
+    if (!ocBusca.trim()) return;
+    setBuscandoVenda(true);
+    setVendaBuscada(null);
+    const { data } = await supabase
+      .from('vendas')
+      .select('id, ordem_compra, clientes(nome_cliente), programas_fidelidade(nome), quantidade_milhas')
+      .ilike('ordem_compra', ocBusca.trim())
+      .maybeSingle();
+    if (data) {
+      setVendaBuscada(data as VendaRef);
+      setForm(f => ({ ...f, venda_id: data.id }));
+    } else {
+      setDialog({ isOpen: true, type: 'warning', title: 'Não encontrado', message: `Nenhuma venda com o Pedido de Compra "${ocBusca}" foi encontrada.` });
+    }
+    setBuscandoVenda(false);
   };
 
   const handleSave = async () => {
@@ -114,6 +154,7 @@ export default function VendaDireta() {
         quantidade_passageiros: parseInt(form.quantidade_passageiros) || 1,
         status: form.status,
         observacao: form.observacao || null,
+        venda_id: form.venda_id || null,
         created_by: usuario?.id,
       };
       if (editing) {
@@ -224,7 +265,7 @@ export default function VendaDireta() {
             <table className="w-full text-xs">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  {['#','Data','Dt. Embarque','Programa','Parceiro','Passageiro','Origem','Destino','Localizador','Milhas','Pax','Status',''].map(h => (
+                  {['#','Ped. Compra','Data','Dt. Embarque','Programa','Parceiro','Passageiro','Origem','Destino','Localizador','Milhas','Pax','Status',''].map(h => (
                     <th key={h} className="px-3 py-2.5 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -233,6 +274,11 @@ export default function VendaDireta() {
                 {lista.map((e, i) => (
                   <tr key={e.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-3 py-2.5 text-slate-400">{i + 1}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      {e.venda?.ordem_compra
+                        ? <span className="text-blue-600 font-medium">{e.venda.ordem_compra}</span>
+                        : <span className="text-slate-300">—</span>}
+                    </td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-slate-700">{f(e.data)}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-slate-500">{f(e.data_embarque || '')}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-slate-600">{e.programa?.nome || '—'}</td>
@@ -259,7 +305,7 @@ export default function VendaDireta() {
               </tbody>
               <tfoot className="bg-slate-50 border-t border-slate-200">
                 <tr>
-                  <td colSpan={9} className="px-3 py-2 text-xs font-semibold text-slate-500">Total ({lista.length} registros)</td>
+                  <td colSpan={10} className="px-3 py-2 text-xs font-semibold text-slate-500">Total ({lista.length} registros)</td>
                   <td className="px-3 py-2 text-xs font-bold text-blue-700">{totalMilhas.toLocaleString('pt-BR')}</td>
                   <td className="px-3 py-2 text-xs font-bold text-slate-700">{totalPax}</td>
                   <td colSpan={2} />
@@ -274,6 +320,41 @@ export default function VendaDireta() {
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)}
         title={editing ? 'Editar Emissão' : 'Nova Emissão'} size="lg">
         <div className="grid grid-cols-2 gap-4">
+          {/* Campo Pedido de Compra */}
+          <div className="col-span-2">
+            <label className="block text-xs font-medium text-slate-600 mb-1">Pedido de Compra</label>
+            <div className="flex gap-2">
+              <input
+                value={ocBusca}
+                onChange={e => { setOcBusca(e.target.value); if (!e.target.value) { setVendaBuscada(null); setForm(f => ({ ...f, venda_id: '' })); } }}
+                onKeyDown={e => e.key === 'Enter' && buscarVenda()}
+                placeholder="Digite o OC e pressione buscar..."
+                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+              />
+              <button type="button" onClick={buscarVenda} disabled={buscandoVenda || !ocBusca.trim()}
+                className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
+                {buscandoVenda ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                Buscar
+              </button>
+              {vendaBuscada && (
+                <button type="button" onClick={() => { setVendaBuscada(null); setOcBusca(''); setForm(f => ({ ...f, venda_id: '' })); }}
+                  className="p-2 text-slate-400 hover:text-red-500 rounded-lg border border-slate-200 hover:border-red-200">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            {vendaBuscada && (
+              <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start justify-between gap-3">
+                <div className="text-xs">
+                  <p className="font-semibold text-blue-800">{vendaBuscada.ordem_compra}</p>
+                  <p className="text-blue-600 mt-0.5">{vendaBuscada.clientes?.nome_cliente || '—'} · {vendaBuscada.programas_fidelidade?.nome || '—'}</p>
+                  <p className="text-blue-500">{vendaBuscada.quantidade_milhas.toLocaleString('pt-BR')} milhas</p>
+                </div>
+                <span className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded-full font-semibold shrink-0">Vinculado</span>
+              </div>
+            )}
+          </div>
+
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Data *</label>
             <input type="date" value={form.data} onChange={e => setForm({...form, data: e.target.value})}

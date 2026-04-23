@@ -720,8 +720,7 @@ export default function Vendas() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Parceiro</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cliente</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Data Emissão</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">OC</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Localizador</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pedido de Compra</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Programa</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cia Parceira</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Qte Milhas</th>
@@ -735,7 +734,7 @@ export default function Vendas() {
             <tbody className="divide-y divide-gray-200">
               {vendasFiltradas.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={12} className="px-6 py-8 text-center text-gray-500">
                     <TrendingUp className="w-12 h-12 mx-auto mb-2 text-gray-400" />
                     <p>Nenhuma venda encontrada</p>
                   </td>
@@ -754,9 +753,6 @@ export default function Vendas() {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900">
                       {venda.ordem_compra || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      {venda.localizadores?.[0]?.codigo_localizador || '-'}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900">
                       {venda.programas_fidelidade?.nome || '-'}
