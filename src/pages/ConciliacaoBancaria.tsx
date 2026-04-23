@@ -7,6 +7,7 @@ import {
   PlusCircle, RefreshCw, CheckCircle2, Clock, AlertTriangle,
   Building2, Search, Link2, Trash2
 } from 'lucide-react';
+import ImportarExtratoOFX from '../components/ImportarExtratoOFX';
 
 type ConciliacaoItem = {
   id: string;
@@ -193,9 +194,19 @@ export default function ConciliacaoBancaria() {
             <h1 className="text-2xl font-bold text-slate-800">Conciliação Bancária</h1>
             <p className="text-slate-500 text-sm">Extrato do banco vs lançamentos financeiros</p>
           </div>
-          <button onClick={() => setModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
-            <PlusCircle className="w-4 h-4" /> Lançamento do Extrato
-          </button>
+          <div className="flex items-center gap-2">
+            {contaSel && (
+              <ImportarExtratoOFX
+                contaBancariaId={contaSel}
+                contaBancariaNome={contaLabel}
+                mesReferencia={mesSel}
+                onImportSuccess={loadData}
+              />
+            )}
+            <button onClick={() => setModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
+              <PlusCircle className="w-4 h-4" /> Lançamento do Extrato
+            </button>
+          </div>
         </div>
 
         {/* Filtros */}
