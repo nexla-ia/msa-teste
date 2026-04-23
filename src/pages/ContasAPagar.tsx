@@ -244,11 +244,7 @@ export default function ContasAPagar() {
     }
     if (detalheForma && c.forma_pagamento !== detalheForma) return false;
     if (detalheCartao) {
-      const isSubCard = c.cartao?.tipo_cartao === 'adicional' || c.cartao?.tipo_cartao === 'virtual';
-      const nomePrincipal = (isSubCard && c.cartao?.cartao_principal?.cartao)
-        ? c.cartao.cartao_principal.cartao
-        : (c.cartao?.cartao || '');
-      if (nomePrincipal !== detalheCartao) return false;
+      if ((c.cartao?.cartao || '') !== detalheCartao) return false;
     }
     if (detalheBusca) {
       const q = detalheBusca.toLowerCase();
@@ -260,13 +256,35 @@ export default function ContasAPagar() {
   });
 
   const formasDoMes = [...new Set(contasDoMes.map(c => c.forma_pagamento).filter(Boolean))] as string[];
-  const cartoesDoMes = [...new Set(
-    contasDoMes.map(c => {
-      if (!c.cartao) return null;
-      const isSubCard = c.cartao.tipo_cartao === 'adicional' || c.cartao.tipo_cartao === 'virtual';
-      return (isSubCard && c.cartao.cartao_principal?.cartao) ? c.cartao.cartao_principal.cartao : c.cartao.cartao;
-    }).filter(Boolean)
-  )] as string[];
+
+  // Grupos de cartões para o filtro: { principal, tipo?, subs[] }
+  const cartoesGruposDoMes = (() => {
+    type Sub = { nome: string; tipo: string };
+    const principalSubs = new Map<string, Sub[]>();
+    const soloCards = new Set<string>();
+    contasDoMes.forEach(c => {
+      if (!c.cartao) return;
+      const isSub = c.cartao.tipo_cartao === 'adicional' || c.cartao.tipo_cartao === 'virtual';
+      if (isSub && c.cartao.cartao_principal?.cartao) {
+        const p = c.cartao.cartao_principal.cartao;
+        if (!principalSubs.has(p)) principalSubs.set(p, []);
+        const arr = principalSubs.get(p)!;
+        if (!arr.some(s => s.nome === c.cartao!.cartao))
+          arr.push({ nome: c.cartao.cartao, tipo: c.cartao.tipo_cartao! });
+      } else {
+        soloCards.add(c.cartao.cartao);
+      }
+    });
+    const grupos: { principal: string; subs: Sub[]; hasProprias: boolean }[] = [];
+    // Principals com sub-cartões
+    principalSubs.forEach((subs, p) => {
+      grupos.push({ principal: p, subs: subs.sort((a, b) => a.nome.localeCompare(b.nome)), hasProprias: soloCards.has(p) });
+      soloCards.delete(p);
+    });
+    // Cartões sem sub-cartões
+    soloCards.forEach(nome => grupos.push({ principal: nome, subs: [], hasProprias: true }));
+    return grupos.sort((a, b) => a.principal.localeCompare(b.principal));
+  })();
 
   // ── pagamento parcela ───────────────────────────────────────────────────
   const abrirModalPagar = (conta: ContaPagar) => {
@@ -641,7 +659,18 @@ export default function ContasAPagar() {
                   <select value={detalheCartao} onChange={e => setDetalheCartao(e.target.value)}
                     className="px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs text-slate-700 focus:ring-2 focus:ring-blue-500 bg-white">
                     <option value="">Todos os cartões</option>
-                    {cartoesDoMes.map(c => <option key={c} value={c}>{c}</option>)}
+                    {cartoesGruposDoMes.map(g =>
+                      g.subs.length > 0 ? (
+                        <optgroup key={g.principal} label={g.principal}>
+                          {g.hasProprias && <option value={g.principal}>Principal</option>}
+                          {g.subs.map(s => (
+                            <option key={s.nome} value={s.nome}>↳ {s.nome} ({s.tipo})</option>
+                          ))}
+                        </optgroup>
+                      ) : (
+                        <option key={g.principal} value={g.principal}>{g.principal}</option>
+                      )
+                    )}
                   </select>
                   <div className="relative">
                     <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
@@ -686,15 +715,30 @@ export default function ContasAPagar() {
                             <td className="px-3 py-2.5 whitespace-nowrap text-slate-500">
                               {c.valor_pago != null ? formatCurrency(c.valor_pago) : '—'}
                             </td>
-                            <td className="px-3 py-2.5 whitespace-nowrap text-slate-500 max-w-[140px]">
-                              {c.cartao ? (
-                                <div className="truncate">
-                                  <span>{(() => { const isSubCard = c.cartao.tipo_cartao === 'adicional' || c.cartao.tipo_cartao === 'virtual'; return (isSubCard && c.cartao.cartao_principal?.cartao) ? c.cartao.cartao_principal.cartao : c.cartao.cartao; })()}</span>
-                                  {(c.cartao.tipo_cartao === 'adicional' || c.cartao.tipo_cartao === 'virtual') && (
-                                    <span className="ml-1 text-[9px] bg-slate-100 text-slate-500 px-1 py-0.5 rounded">{c.cartao.tipo_cartao}</span>
-                                  )}
-                                </div>
-                              ) : '—'}
+                            <td className="px-3 py-2.5 max-w-[170px]">
+                              {c.cartao ? (() => {
+                                const isSub = c.cartao.tipo_cartao === 'adicional' || c.cartao.tipo_cartao === 'virtual';
+                                const tipo = c.cartao.tipo_cartao || '';
+                                return (
+                                  <div>
+                                    <div className="flex items-center gap-1 flex-wrap">
+                                      <span className="text-blue-600 text-xs truncate">{c.cartao.cartao}</span>
+                                      {isSub && (
+                                        <span className={`shrink-0 px-1.5 py-0.5 text-[9px] font-semibold rounded-full border ${
+                                          tipo === 'virtual'
+                                            ? 'bg-purple-50 text-purple-600 border-purple-200'
+                                            : 'bg-blue-50 text-blue-600 border-blue-200'
+                                        }`}>{tipo}</span>
+                                      )}
+                                    </div>
+                                    {isSub && c.cartao.cartao_principal?.cartao && (
+                                      <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                                        ↳ {c.cartao.cartao_principal.cartao}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })() : <span className="text-slate-300">—</span>}
                             </td>
                             <td className="px-3 py-2.5 whitespace-nowrap text-slate-400">{getTipoLabel(c.origem_tipo)}</td>
                             <td className="px-3 py-2.5 whitespace-nowrap">
