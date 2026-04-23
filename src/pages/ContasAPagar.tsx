@@ -555,6 +555,32 @@ export default function ContasAPagar() {
                             {exp ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
                           </div>
                         </div>
+
+                        {/* Sub-cartões visíveis quando colapsado */}
+                        {!exp && fatura.subCards.length > 0 && (
+                          <div className="border-t border-slate-100 divide-y divide-slate-100">
+                            {fatura.subCards.map(sub => (
+                              <div key={sub.cartaoId} className="flex items-center justify-between px-4 py-2 pl-10 bg-slate-50/40 hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => toggleExpand(fatura.key)}>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-1 h-4 rounded-full bg-slate-200 mr-1" />
+                                  <CreditCard className="w-3 h-3 text-slate-400" />
+                                  <span className="text-xs text-slate-600 font-medium">{sub.cartaoNome}</span>
+                                  <span className={`px-1.5 py-0.5 text-[9px] font-semibold rounded-full border ${
+                                    sub.tipo === 'virtual'
+                                      ? 'bg-purple-50 text-purple-600 border-purple-200'
+                                      : 'bg-blue-50 text-blue-600 border-blue-200'
+                                  }`}>{sub.tipo}</span>
+                                  <span className="text-[10px] text-slate-400">{sub.contas.length} parcela(s)</span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  {sub.totalPago > 0 && <span className="text-[10px] text-emerald-600 font-medium">{formatCurrency(sub.totalPago)} pago</span>}
+                                  {sub.totalPendente > 0 && <span className="text-xs font-semibold text-slate-700">{formatCurrency(sub.totalPendente)}</span>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
                         {exp && (() => {
                           const renderContaRow = (c: ContaPagar) => {
                             const st = getStatusConta(c);
