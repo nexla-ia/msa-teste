@@ -270,21 +270,17 @@ export default function ConciliacaoBancaria() {
     const crUsadas = new Set<string>();
     const vendasUsadas = new Set<string>();
 
-    const diasEntre = (a: string, b: string) =>
-      Math.abs((new Date(a).getTime() - new Date(b).getTime()) / 86400000);
-
     for (const item of pendentesCredito) {
-      // 1ª tentativa: contas_receber com valor igual, ordenadas por proximidade de data
-      const crMatches = contasReceber
-        .filter(cr => !crUsadas.has(cr.id)
-          && Math.abs(Number(cr.valor_parcela) - item.valor_extrato) < 0.01)
-        .map(cr => ({ cr, dias: diasEntre(cr.data_vencimento, item.data_extrato) }))
-        .sort((a, b) => a.dias - b.dias);
+      // 1ª tentativa: contas_receber com valor E data de vencimento EXATAMENTE iguais
+      const crMatchesExatos = contasReceber.filter(cr =>
+        !crUsadas.has(cr.id)
+        && Math.abs(Number(cr.valor_parcela) - item.valor_extrato) < 0.01
+        && cr.data_vencimento === item.data_extrato
+      );
 
-      // Match forte: mesmo valor e vencimento dentro de 7 dias do crédito
-      const matchForte = crMatches.find(m => m.dias <= 7);
-      if (matchForte) {
-        const { cr } = matchForte;
+      // Só concilia automaticamente se houver exatamente 1 parcela com valor e data batendo
+      if (crMatchesExatos.length === 1) {
+        const cr = crMatchesExatos[0];
         const { error } = await supabase.from('conciliacao_bancaria').update({
           venda_id: cr.venda_id,
           lancamento_id: null,
@@ -341,7 +337,7 @@ export default function ConciliacaoBancaria() {
       title: 'Conciliação automática',
       message:
         `${total} conciliado(s) automaticamente.\n` +
-        `  • ${conciliadosData} por valor + vencimento (alta confiança)\n` +
+        `  • ${conciliadosData} por valor + vencimento exato\n` +
         `  • ${conciliadosValor} só por valor\n` +
         (multiplos > 0 ? `${multiplos} com múltiplos matches — revisar manualmente.\n` : '') +
         `${semMatch} sem correspondência.`
