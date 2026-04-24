@@ -166,33 +166,71 @@ export default function ImportarExtratoOFX({ contaBancariaId, contaBancariaNome,
     setLoading(true);
     setWarnings([]);
 
-    const records = transactions.map(t => ({
+    // 1. Descobre quais fitids já existem para evitar duplicatas
+    const { data: existing } = await supabase
+      .from('conciliacao_bancaria')
+      .select('fitid')
+      .eq('conta_bancaria_id', contaBancariaId)
+      .in('fitid', transactions.map(t => t.fitid));
+
+    const existingFitids = new Set((existing || []).map((e: any) => e.fitid));
+    const novas = transactions.filter(t => !existingFitids.has(t.fitid));
+    const duplicatas = transactions.length - novas.length;
+
+    if (novas.length === 0) {
+      setImportResult({ inseridos: 0, duplicatas });
+      setLoading(false);
+      setEtapa('sucesso');
+      onImportSuccess();
+      return;
+    }
+
+    // 2. Cria os lançamentos financeiros para as transações novas
+    const lancRecords = novas.map(t => ({
+      data_lancamento:  t.date,
+      descricao:        t.description,
+      valor:            t.amount,
+      tipo:             t.tipo === 'credito' ? 'entrada' : 'saida',
+      conta_bancaria_id: contaBancariaId,
+      conciliado:       false,
+      observacao:       `Importado OFX · ${t.trntype || t.tipo}`,
+    }));
+
+    const { data: lancData, error: lancErr } = await supabase
+      .from('lancamentos_financeiros')
+      .insert(lancRecords)
+      .select('id');
+
+    if (lancErr) {
+      setWarnings([`Erro ao criar lançamentos: ${lancErr.message}`]);
+      setLoading(false);
+      return;
+    }
+
+    // 3. Cria os registros de conciliação já vinculados aos lançamentos
+    const concRecords = novas.map((t, i) => ({
       conta_bancaria_id: contaBancariaId,
       data_extrato:      t.date,
       descricao_extrato: t.description,
       valor_extrato:     t.amount,
       tipo:              t.tipo,
+      lancamento_id:     lancData![i].id,
       status:            'pendente',
       fitid:             t.fitid,
       updated_at:        new Date().toISOString(),
     }));
 
-    // Bulk upsert — ignora duplicatas via unique index (fitid + conta_bancaria_id)
-    const { data, error } = await supabase
+    const { error: concErr } = await supabase
       .from('conciliacao_bancaria')
-      .upsert(records, { ignoreDuplicates: true })
-      .select('id');
+      .insert(concRecords);
 
-    if (error) {
-      setWarnings([`Erro ao importar: ${error.message}`]);
+    if (concErr) {
+      setWarnings([`Erro ao criar conciliação: ${concErr.message}`]);
       setLoading(false);
       return;
     }
 
-    const inseridos  = data?.length ?? 0;
-    const duplicatas = transactions.length - inseridos;
-
-    setImportResult({ inseridos, duplicatas });
+    setImportResult({ inseridos: novas.length, duplicatas });
     setLoading(false);
     setEtapa('sucesso');
     onImportSuccess();
