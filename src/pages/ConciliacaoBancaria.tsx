@@ -34,17 +34,6 @@ type CentroCusto = { id: string; nome: string };
 const MES_FULL = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-function getMeses() {
-  const lista = [];
-  const now = new Date();
-  for (let i = 0; i < 24; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    lista.push({ val, label: `${MES_FULL[d.getMonth()]} ${d.getFullYear()}` });
-  }
-  return lista;
-}
-
 const STATUS_MAP = {
   conciliado:  { label: 'Conciliado',  color: 'bg-green-100 text-green-700',  icon: CheckCircle2 },
   pendente:    { label: 'Pendente',    color: 'bg-amber-100 text-amber-700',  icon: Clock },
@@ -52,11 +41,13 @@ const STATUS_MAP = {
 };
 
 export default function ConciliacaoBancaria() {
-  const meses = getMeses();
-  const [mesSel, setMesSel] = useState(meses[0].val);
+  const [mesSel, setMesSel] = useState<string>('');
   const [contaSel, setContaSel] = useState<string>('');
   const [items, setItems] = useState<ConciliacaoItem[]>([]);
   const [contas, setContas] = useState<ContaBancaria[]>([]);
+  // bancos e meses que realmente têm dados em conciliacao_bancaria
+  const [bancosComDados, setBancosComDados] = useState<Set<string>>(new Set());
+  const [mesesPorBanco, setMesesPorBanco] = useState<Map<string, Set<string>>>(new Map());
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
   const [vendas, setVendas] = useState<Venda[]>([]);
   const [centrosCusto, setCentrosCusto] = useState<CentroCusto[]>([]);
@@ -79,13 +70,40 @@ export default function ConciliacaoBancaria() {
   }>({ isOpen: false, type: 'info', title: '', message: '' });
 
   const loadContas = useCallback(async () => {
-    const [{ data: contas }, { data: cc }] = await Promise.all([
+    const [{ data: contas }, { data: cc }, { data: conciliacoes }] = await Promise.all([
       supabase.from('contas_bancarias').select('id, nome_banco').order('nome_banco'),
       supabase.from('centro_custos').select('id, nome').order('nome'),
+      supabase.from('conciliacao_bancaria').select('conta_bancaria_id, data_extrato'),
     ]);
     setContas(contas || []);
     setCentrosCusto(cc || []);
-    if (contas && contas.length > 0 && !contaSel) setContaSel(contas[0].id);
+
+    // Descobre bancos e meses que têm dados
+    const bancos = new Set<string>();
+    const byBanco = new Map<string, Set<string>>();
+    (conciliacoes || []).forEach((c: any) => {
+      const mes = String(c.data_extrato).substring(0, 7);
+      bancos.add(c.conta_bancaria_id);
+      if (!byBanco.has(c.conta_bancaria_id)) byBanco.set(c.conta_bancaria_id, new Set());
+      byBanco.get(c.conta_bancaria_id)!.add(mes);
+    });
+    setBancosComDados(bancos);
+    setMesesPorBanco(byBanco);
+
+    // Auto-seleciona primeiro banco com dados (ou primeiro banco se nenhum tem dado)
+    if (!contaSel && contas && contas.length > 0) {
+      const primeiroComDados = contas.find(c => bancos.has(c.id));
+      const banco = primeiroComDados || contas[0];
+      setContaSel(banco.id);
+      const mesesDoBanco = byBanco.get(banco.id);
+      if (mesesDoBanco && mesesDoBanco.size > 0) {
+        const mesMaisRecente = [...mesesDoBanco].sort().reverse()[0];
+        setMesSel(mesMaisRecente);
+      } else {
+        const hoje = new Date();
+        setMesSel(`${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`);
+      }
+    }
   }, [contaSel]);
 
   const loadData = useCallback(async () => {
@@ -241,7 +259,25 @@ export default function ConciliacaoBancaria() {
     ? Math.round((totais.conciliado / items.length) * 1000) / 10
     : 0;
 
-  const mesLabel = meses.find(m => m.val === mesSel)?.label || '';
+  // Só mostra bancos que têm dados (se houver algum)
+  const contasDisponiveis = bancosComDados.size > 0
+    ? contas.filter(c => bancosComDados.has(c.id))
+    : contas;
+
+  // Só mostra meses que têm dados no banco selecionado
+  const mesesDoBancoSel = mesesPorBanco.get(contaSel) || new Set<string>();
+  const mesesDisponiveis = mesesDoBancoSel.size > 0
+    ? [...mesesDoBancoSel].sort().reverse().map(val => {
+        const [y, m] = val.split('-').map(Number);
+        return { val, label: `${MES_FULL[m - 1]} ${y}` };
+      })
+    : (() => {
+        const hoje = new Date();
+        const val = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+        return [{ val, label: `${MES_FULL[hoje.getMonth()]} ${hoje.getFullYear()}` }];
+      })();
+
+  const mesLabel = mesesDisponiveis.find(m => m.val === mesSel)?.label || '';
   const contaLabel = contas.find(c => c.id === contaSel)?.nome_banco || '';
 
   return (
@@ -259,7 +295,7 @@ export default function ConciliacaoBancaria() {
                 contaBancariaId={contaSel}
                 contaBancariaNome={contaLabel}
                 mesReferencia={mesSel}
-                onImportSuccess={loadData}
+                onImportSuccess={() => { loadContas(); loadData(); }}
               />
             )}
             <button onClick={() => setModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
@@ -270,13 +306,19 @@ export default function ConciliacaoBancaria() {
 
         {/* Filtros */}
         <div className="flex items-center gap-3 flex-wrap">
-          <select value={contaSel} onChange={e => setContaSel(e.target.value)}
+          <select value={contaSel} onChange={e => {
+            setContaSel(e.target.value);
+            const meses = mesesPorBanco.get(e.target.value);
+            if (meses && meses.size > 0) {
+              setMesSel([...meses].sort().reverse()[0]);
+            }
+          }}
             className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white">
-            {contas.map(c => <option key={c.id} value={c.id}>{c.nome_banco}</option>)}
+            {contasDisponiveis.map(c => <option key={c.id} value={c.id}>{c.nome_banco}</option>)}
           </select>
           <select value={mesSel} onChange={e => setMesSel(e.target.value)}
             className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white">
-            {meses.map(m => <option key={m.val} value={m.val}>{m.label}</option>)}
+            {mesesDisponiveis.map(m => <option key={m.val} value={m.val}>{m.label}</option>)}
           </select>
           <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value as any)}
             className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white">
