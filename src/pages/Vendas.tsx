@@ -449,6 +449,16 @@ export default function Vendas() {
       if (vendaRes.error) throw vendaRes.error;
       const v = vendaRes.data;
 
+      const { data: estoqueData } = await supabase
+        .from('estoque_pontos')
+        .select('saldo_atual, custo_medio')
+        .eq('parceiro_id', v.parceiro_id)
+        .eq('programa_id', v.programa_id)
+        .maybeSingle();
+
+      setSaldoAtual(Number(estoqueData?.saldo_atual || 0));
+      setCustoMedio(Number(estoqueData?.custo_medio || 0));
+
       custoEmissaoManual.current = true;
       setCustoEmissaoEhManual(true);
 
