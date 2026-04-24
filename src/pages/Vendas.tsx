@@ -624,30 +624,8 @@ export default function Vendas() {
 
       if (editingVendaId) {
         // ── Modo Edição ──
-        // Verificar saldo apenas se quantidade aumentou
-        const { data: vendaOriginal } = await supabase
-          .from('vendas')
-          .select('quantidade_milhas')
-          .eq('id', editingVendaId)
-          .single();
-
-        const qtdOriginal = Number(vendaOriginal?.quantidade_milhas || 0);
-        const delta = formData.quantidade_milhas - qtdOriginal;
-
-        if (delta > 0) {
-          const { data: estoqueCheck } = await supabase
-            .from('estoque_pontos')
-            .select('saldo_atual')
-            .eq('parceiro_id', formData.parceiro_id)
-            .eq('programa_id', formData.programa_id)
-            .maybeSingle();
-
-          const saldoDisp = Number(estoqueCheck?.saldo_atual || 0);
-          if (delta > saldoDisp) {
-            throw new Error(`Saldo insuficiente para o ajuste. Disponível: ${saldoDisp.toLocaleString('pt-BR')} — Adicional necessário: ${delta.toLocaleString('pt-BR')}`);
-          }
-        }
-
+        // Quantidade de milhas é bloqueada na edição (campo read-only),
+        // então não há ajuste de estoque a verificar.
         const { error: rpcError } = await supabase.rpc('admin_update_venda', {
           p_venda_id:                editingVendaId,
           p_usuario_id:              usuario!.id,
@@ -1120,7 +1098,8 @@ export default function Vendas() {
                       const value = e.target.value.replace(/\D/g, '');
                       setFormData(prev => ({ ...prev, quantidade_milhas: Number(value) }));
                     }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    readOnly={!!editingVendaId}
+                    className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${editingVendaId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                     placeholder="0"
                   />
                 </div>
