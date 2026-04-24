@@ -119,7 +119,7 @@ export default function ConciliacaoBancaria() {
 
     const [concRes, lancRes, vendasRes] = await Promise.all([
       supabase.from('conciliacao_bancaria')
-        .select('*, conta_bancaria:contas_bancarias(nome_banco), lancamento:lancamentos_financeiros(descricao,valor), venda:vendas(ordem_compra,valor_total,clientes(nome_cliente),parceiros(nome_parceiro)), centro_custo:centro_custos(nome)')
+        .select('*, conta_bancaria:contas_bancarias(nome_banco), lancamento:lancamentos_financeiros(descricao,valor), venda:vendas(ordem_compra,valor_total,clientes(nome_cliente),parceiros(nome_parceiro))')
         .eq('conta_bancaria_id', contaSel)
         .gte('data_extrato', inicio)
         .lte('data_extrato', fim)
@@ -132,10 +132,14 @@ export default function ConciliacaoBancaria() {
         .order('data_lancamento', { ascending: false }),
       supabase.from('vendas')
         .select('id, ordem_compra, valor_total, data_venda, clientes(nome_cliente), parceiros(nome_parceiro)')
-        .eq('conciliado', false)
         .gte('data_venda', seisAtrasStr)
         .order('data_venda', { ascending: false }),
     ]);
+
+    if (concRes.error) console.error('❌ Erro conciliacao:', concRes.error);
+    if (lancRes.error) console.error('❌ Erro lancamentos:', lancRes.error);
+    if (vendasRes.error) console.error('❌ Erro vendas:', vendasRes.error);
+
     setItems(concRes.data || []);
     setLancamentos(lancRes.data || []);
     setVendas((vendasRes.data || []) as Venda[]);
