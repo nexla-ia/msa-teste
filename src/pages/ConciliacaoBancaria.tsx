@@ -5,7 +5,7 @@ import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import {
   PlusCircle, RefreshCw, CheckCircle2, Clock, AlertTriangle,
-  Building2, Search, Link2, Trash2
+  Building2, Search, Link2, Trash2, TrendingUp
 } from 'lucide-react';
 import ImportarExtratoOFX from '../components/ImportarExtratoOFX';
 
@@ -237,6 +237,9 @@ export default function ConciliacaoBancaria() {
     conciliado: items.filter(i => i.status === 'conciliado').length,
     divergente: items.filter(i => i.status === 'divergente').length,
   };
+  const taxaConciliacao = items.length > 0
+    ? Math.round((totais.conciliado / items.length) * 1000) / 10
+    : 0;
 
   const mesLabel = meses.find(m => m.val === mesSel)?.label || '';
   const contaLabel = contas.find(c => c.id === contaSel)?.nome_banco || '';
@@ -293,7 +296,7 @@ export default function ConciliacaoBancaria() {
         </div>
 
         {/* Status resumo */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {(['pendente', 'conciliado', 'divergente'] as const).map(s => {
             const st = STATUS_MAP[s];
             return (
@@ -301,14 +304,23 @@ export default function ConciliacaoBancaria() {
                 <div className={`inline-flex p-2 rounded-lg mb-2 ${s === 'conciliado' ? 'bg-green-50' : s === 'pendente' ? 'bg-amber-50' : 'bg-red-50'}`}>
                   <st.icon className={`w-4 h-4 ${s === 'conciliado' ? 'text-green-600' : s === 'pendente' ? 'text-amber-600' : 'text-red-500'}`} />
                 </div>
-                <p className="text-xs text-slate-500 font-medium">{st.label}</p>
+                <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">{st.label}</p>
                 <p className={`text-2xl font-bold ${s === 'conciliado' ? 'text-green-700' : s === 'pendente' ? 'text-amber-700' : 'text-red-600'}`}>
-                  {totais[s]}
+                  {totais[s]} <span className="text-sm font-normal text-slate-400">itens</span>
                 </p>
-                <p className="text-xs text-slate-400">lançamentos</p>
               </div>
             );
           })}
+          {/* Taxa de Conciliação */}
+          <div className="bg-white rounded-xl border border-blue-100 shadow-sm p-4">
+            <div className="inline-flex p-2 rounded-lg mb-2 bg-blue-50">
+              <TrendingUp className="w-4 h-4 text-blue-600" />
+            </div>
+            <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Taxa Conciliação</p>
+            <p className="text-2xl font-bold text-blue-700">
+              {taxaConciliacao.toFixed(1).replace('.', ',')}%
+            </p>
+          </div>
         </div>
 
         {/* Tabela */}
@@ -330,43 +342,51 @@ export default function ConciliacaoBancaria() {
               <table className="w-full text-sm">
                 <thead className="border-b border-slate-100 bg-slate-50">
                   <tr>
-                    {['Data', 'Descrição', 'Tipo', 'Valor', 'Lançamento Vinculado', 'Centro de Custo', 'Obs.', 'Status', 'Ações'].map(h => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">{h}</th>
+                    {['Data', 'Descrição', 'Tipo', 'Valor Extrato', 'Lançamento ERP', 'Valor ERP', 'Diferença', 'Centro de Custo', 'Obs.', 'Status', 'Ação'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map(item => {
                     const st = STATUS_MAP[item.status];
+                    const valorERP = item.lancamento?.valor ?? item.venda?.valor_total ?? null;
+                    const diferenca = valorERP !== null ? item.valor_extrato - valorERP : null;
                     return (
                       <tr key={item.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{formatDate(item.data_extrato)}</td>
-                        <td className="px-4 py-3 text-slate-700 max-w-xs truncate">{item.descricao_extrato}</td>
+                        <td className="px-4 py-3 text-slate-700 max-w-[200px] truncate text-xs">{item.descricao_extrato}</td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${item.tipo === 'credito' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
                             {item.tipo === 'credito' ? 'Crédito' : 'Débito'}
                           </span>
                         </td>
-                        <td className={`px-4 py-3 font-semibold ${item.tipo === 'credito' ? 'text-green-600' : 'text-red-500'}`}>
-                          {fmtBRL(item.valor_extrato)}
+                        <td className={`px-4 py-3 font-semibold text-xs whitespace-nowrap ${item.tipo === 'credito' ? 'text-green-600' : 'text-red-500'}`}>
+                          {item.tipo === 'credito' ? '+' : '-'}{fmtBRL(item.valor_extrato)}
                         </td>
-                        <td className="px-4 py-3 text-xs max-w-[180px]">
+                        <td className="px-4 py-3 text-xs max-w-[160px]">
                           {item.venda ? (
                             <div>
-                              <span className="text-emerald-600 font-semibold block truncate">
-                                {item.venda.ordem_compra || 'Venda'}
-                              </span>
-                              <span className="text-slate-400 truncate block">
-                                {item.venda.clientes?.nome_cliente || item.venda.parceiros?.nome_parceiro || '—'}
-                              </span>
+                              <span className="text-emerald-600 font-semibold block truncate">{item.venda.ordem_compra || 'Venda'}</span>
+                              <span className="text-slate-400 truncate block">{item.venda.clientes?.nome_cliente || item.venda.parceiros?.nome_parceiro || '—'}</span>
                             </div>
                           ) : item.lancamento ? (
                             <span className="text-blue-600 truncate block">{item.lancamento.descricao}</span>
                           ) : (
-                            <span className="text-slate-300">Não vinculado</span>
+                            <span className="text-slate-300">—</span>
                           )}
                         </td>
-                        <td className="px-2 py-2 min-w-[140px]">
+                        <td className="px-4 py-3 text-xs whitespace-nowrap text-slate-700 font-medium">
+                          {valorERP !== null ? fmtBRL(valorERP) : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="px-4 py-3 text-xs whitespace-nowrap font-semibold">
+                          {diferenca !== null ? (
+                            Math.abs(diferenca) < 0.01
+                              ? <span className="text-slate-400">R$ 0</span>
+                              : <span className="text-red-500">{fmtBRL(Math.abs(diferenca))}</span>
+                          ) : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="px-2 py-2 min-w-[130px]">
                           <select
                             value={item.centro_custo_id || ''}
                             onChange={e => handleUpdateField(item.id, 'centro_custo_id', e.target.value)}
@@ -378,7 +398,7 @@ export default function ConciliacaoBancaria() {
                             ))}
                           </select>
                         </td>
-                        <td className="px-2 py-2 min-w-[140px]">
+                        <td className="px-2 py-2 min-w-[130px]">
                           <input
                             type="text"
                             defaultValue={item.observacao || ''}
@@ -392,24 +412,31 @@ export default function ConciliacaoBancaria() {
                             <st.icon className="w-3 h-3" />{st.label}
                           </span>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 whitespace-nowrap">
                           <div className="flex items-center gap-1">
-                            {item.status !== 'conciliado' && (
+                            {item.status === 'pendente' && (
                               <button
                                 onClick={() => { setVinculoItem(item); setVinculoOpen(true); }}
-                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                                title="Vincular lançamento"
+                                className="px-3 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
                               >
-                                <Link2 className="w-3.5 h-3.5" />
+                                Vincular
+                              </button>
+                            )}
+                            {item.status === 'divergente' && (
+                              <button
+                                onClick={() => { setVinculoItem(item); setVinculoOpen(true); }}
+                                className="px-3 py-1 text-xs font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors"
+                              >
+                                Revisar
                               </button>
                             )}
                             {item.status === 'conciliado' && (
                               <button
                                 onClick={() => handleDesconciliar(item)}
-                                className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded transition-colors"
+                                className="px-3 py-1 text-xs font-medium text-green-700 bg-green-100 hover:bg-green-200 rounded-lg transition-colors flex items-center gap-1"
                                 title="Desconciliar"
                               >
-                                <Link2 className="w-3.5 h-3.5" />
+                                <CheckCircle2 className="w-3 h-3" /> Conciliado
                               </button>
                             )}
                             <button onClick={() => handleDelete(item)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors">
