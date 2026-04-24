@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Plus, TrendingUp, Eye, Trash2, Layers, AlertTriangle } from 'lucide-react';
+import { Plus, TrendingUp, Eye, Trash2, Layers, AlertTriangle, Pencil } from 'lucide-react';
 import { FilterBar } from '../components/FilterCombobox';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -105,6 +105,7 @@ export default function Vendas() {
   const [filtroStatus, setFiltroStatus] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [showLoteModal, setShowLoteModal] = useState(false);
+  const [editingVendaId, setEditingVendaId] = useState<string | null>(null);
   const [saldoAtual, setSaldoAtual] = useState<number>(0);
   const [custoMedio, setCustoMedio] = useState<number>(0);
   const [comissaoInfo, setComissaoInfo] = useState<{ tem_comissao: boolean; tipo: 'porcentagem' | 'real' | null; valor: number }>({ tem_comissao: false, tipo: null, valor: 0 });
@@ -433,7 +434,78 @@ export default function Vendas() {
 
   const handleCloseModal = () => {
     setShowModal(false);
+    setEditingVendaId(null);
     setError('');
+  };
+
+  const handleOpenEditModal = async (id: string) => {
+    try {
+      const [vendaRes, locRes, contaRes] = await Promise.all([
+        supabase.from('vendas').select('*').eq('id', id).single(),
+        supabase.from('localizadores').select('codigo_localizador').eq('venda_id', id).maybeSingle(),
+        supabase.from('contas_receber').select('data_vencimento, valor_parcela').eq('venda_id', id).eq('status_pagamento', 'pendente').maybeSingle(),
+      ]);
+
+      if (vendaRes.error) throw vendaRes.error;
+      const v = vendaRes.data;
+
+      custoEmissaoManual.current = true;
+      setCustoEmissaoEhManual(true);
+
+      setFormData({
+        parceiro_id: v.parceiro_id || '',
+        cliente_id: v.cliente_id || '',
+        cartao_id: '',
+        data_venda: v.data_venda || '',
+        ordem_compra: v.ordem_compra || '',
+        programa_id: v.programa_id || '',
+        cia_parceira: v.cia_parceira || '',
+        quantidade_milhas: v.quantidade_milhas || 0,
+        valor_milheiro: v.valor_milheiro || 0,
+        valor_total: v.valor_total || 0,
+        taxa_embarque: v.taxa_embarque || 0,
+        taxa_resgate: v.taxa_resgate || 0,
+        taxa_bagagem: v.taxa_bagagem || 0,
+        cartao_taxa_embarque_id: v.cartao_taxa_embarque_id || '',
+        cartao_taxa_embarque_tipo: '',
+        cartao_taxa_embarque_parcelas: 1,
+        cartao_taxa_bagagem_id: v.cartao_taxa_bagagem_id || '',
+        cartao_taxa_bagagem_tipo: '',
+        cartao_taxa_bagagem_parcelas: 1,
+        cartao_taxa_resgate_id: v.cartao_taxa_resgate_id || '',
+        cartao_taxa_resgate_tipo: '',
+        cartao_taxa_resgate_parcelas: 1,
+        data_voo_ida: v.data_voo_ida || '',
+        data_voo_volta: v.data_voo_volta || '',
+        nome_passageiro: v.nome_passageiro || '',
+        quantidade_passageiros: v.quantidade_passageiros || 1,
+        trecho: v.trecho || '',
+        tarifa_diamante: v.tarifa_diamante || 0,
+        milhas_bonus: v.milhas_bonus || 0,
+        custo_emissao: v.custo_emissao || 0,
+        emissor: v.emissor || '',
+        observacao: v.observacao || '',
+        localizador: locRes.data?.codigo_localizador || '',
+        data_vencimento_venda: contaRes.data?.data_vencimento || '',
+      });
+
+      setRawValorMilheiro(v.valor_milheiro ? formatNumberDisplay(v.valor_milheiro) : '');
+      setRawTaxaEmbarque(v.taxa_embarque ? formatNumberDisplay(v.taxa_embarque) : '');
+      setRawTaxaResgate(v.taxa_resgate ? formatNumberDisplay(v.taxa_resgate) : '');
+      setRawTaxaBagagem(v.taxa_bagagem ? formatNumberDisplay(v.taxa_bagagem) : '');
+      setRawCustoEmissao(v.custo_emissao ? formatNumberDisplay(v.custo_emissao) : '');
+
+      setEditingVendaId(id);
+      setError('');
+      setShowModal(true);
+    } catch (err: any) {
+      setDialogConfig({
+        isOpen: true,
+        type: 'error',
+        title: 'Erro',
+        message: err.message || 'Erro ao carregar dados da venda',
+      });
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -500,52 +572,6 @@ export default function Vendas() {
         throw new Error('Informe a data de vencimento para gerar a conta a receber.');
       }
 
-      if (formData.localizador) {
-        const { data: localizadorExiste } = await supabase
-          .from('vendas')
-          .select('id')
-          .eq('localizador', formData.localizador)
-          .maybeSingle();
-        if (localizadorExiste) {
-          throw new Error(`Já existe uma venda com o Localizador "${formData.localizador}". Localizadores não podem ser duplicados.`);
-        }
-      }
-
-      if (formData.ordem_compra) {
-        const { data: ocExiste } = await supabase
-          .from('vendas')
-          .select('id')
-          .eq('ordem_compra', formData.ordem_compra)
-          .maybeSingle();
-        if (ocExiste) {
-          throw new Error(`Já existe uma venda com a Ordem de Compra "${formData.ordem_compra}". OCs não podem ser duplicadas.`);
-        }
-      }
-
-      // Re-fetch saldo no momento do submit para evitar usar valor stale do form
-      const { data: estoqueCheck } = await supabase
-        .from('estoque_pontos')
-        .select('id, saldo_atual')
-        .eq('parceiro_id', formData.parceiro_id)
-        .eq('programa_id', formData.programa_id)
-        .maybeSingle();
-
-      if (!estoqueCheck) {
-        const parceiroSel = parceiros.find((p: any) => p.id === formData.parceiro_id);
-        const programaSel = programas.find((p: any) => p.id === formData.programa_id);
-        throw new Error(
-          `${parceiroSel?.nome_parceiro || 'O parceiro'} não possui conta cadastrada no programa ${programaSel?.nome || 'selecionado'}.\n\nRegistre uma compra ou movimentação para este parceiro neste programa antes de realizar uma venda.`
-        );
-      }
-
-      const saldoFresh = Number(estoqueCheck.saldo_atual || 0);
-      if (saldoFresh !== saldoAtual) {
-        setSaldoAtual(saldoFresh); // Atualiza display
-      }
-      if (formData.quantidade_milhas > saldoFresh) {
-        throw new Error(`Saldo insuficiente. Saldo atual: ${saldoFresh.toLocaleString('pt-BR')} — Quantidade solicitada: ${formData.quantidade_milhas.toLocaleString('pt-BR')}`);
-      }
-
       if (formData.quantidade_milhas <= 0) {
         throw new Error('Quantidade de milhas deve ser maior que zero.');
       }
@@ -554,91 +580,211 @@ export default function Vendas() {
         throw new Error('Valor do milheiro deve ser maior que zero.');
       }
 
-      const vendaData = {
-        parceiro_id: formData.parceiro_id,
-        cliente_id: formData.cliente_id || null,
-        data_venda: formData.data_venda,
-        ordem_compra: formData.ordem_compra || null,
-        programa_id: formData.programa_id,
-        cia_parceira: formData.cia_parceira || null,
-        quantidade_milhas: formData.quantidade_milhas,
-        valor_milheiro: formData.valor_milheiro,
-        valor_total: formData.valor_total,
-        taxa_embarque: formData.taxa_embarque,
-        taxa_resgate: formData.taxa_resgate,
-        taxa_bagagem: formData.taxa_bagagem,
-        cartao_taxa_embarque_id: formData.cartao_taxa_embarque_id || null,
-        cartao_taxa_bagagem_id: formData.cartao_taxa_bagagem_id || null,
-        cartao_taxa_resgate_id: formData.cartao_taxa_resgate_id || null,
-        data_voo_ida: formData.data_voo_ida || null,
-        data_voo_volta: formData.data_voo_volta || null,
-        nome_passageiro: formData.nome_passageiro || null,
-        quantidade_passageiros: formData.quantidade_passageiros,
-        trecho: formData.trecho || null,
-        tarifa_diamante: formData.tarifa_diamante,
-        milhas_bonus: formData.milhas_bonus,
-        custo_emissao: formData.custo_emissao,
-        emissor: formData.emissor || null,
-        observacao: formData.observacao || null,
-        custo_medio: custoMedio,
-        lucro_real: lucroReal,
-        status: 'concluida',
-        created_by: usuario?.id,
-      };
-
-      const { data: vendaCriada, error: vendaError } = await supabase
-        .from('vendas')
-        .insert([vendaData])
-        .select()
-        .single();
-
-      if (vendaError) throw vendaError;
-
+      // Verificar localizador duplicado
       if (formData.localizador) {
-        const { error: localizadorError } = await supabase
-          .from('localizadores')
-          .insert([{
+        if (editingVendaId) {
+          const { data: locExiste } = await supabase
+            .from('localizadores')
+            .select('venda_id')
+            .eq('codigo_localizador', formData.localizador)
+            .neq('venda_id', editingVendaId)
+            .maybeSingle();
+          if (locExiste) throw new Error(`Localizador "${formData.localizador}" já está em uso em outra venda.`);
+        } else {
+          const { data: localizadorExiste } = await supabase
+            .from('vendas')
+            .select('id')
+            .eq('localizador', formData.localizador)
+            .maybeSingle();
+          if (localizadorExiste) {
+            throw new Error(`Já existe uma venda com o Localizador "${formData.localizador}". Localizadores não podem ser duplicados.`);
+          }
+        }
+      }
+
+      // Verificar OC duplicada
+      if (formData.ordem_compra) {
+        let ocQuery = supabase.from('vendas').select('id').eq('ordem_compra', formData.ordem_compra);
+        if (editingVendaId) ocQuery = ocQuery.neq('id', editingVendaId);
+        const { data: ocExiste } = await ocQuery.maybeSingle();
+        if (ocExiste) {
+          throw new Error(`Já existe uma venda com a Ordem de Compra "${formData.ordem_compra}". OCs não podem ser duplicadas.`);
+        }
+      }
+
+      if (editingVendaId) {
+        // ── Modo Edição ──
+        // Verificar saldo apenas se quantidade aumentou
+        const { data: vendaOriginal } = await supabase
+          .from('vendas')
+          .select('quantidade_milhas')
+          .eq('id', editingVendaId)
+          .single();
+
+        const qtdOriginal = Number(vendaOriginal?.quantidade_milhas || 0);
+        const delta = formData.quantidade_milhas - qtdOriginal;
+
+        if (delta > 0) {
+          const { data: estoqueCheck } = await supabase
+            .from('estoque_pontos')
+            .select('saldo_atual')
+            .eq('parceiro_id', formData.parceiro_id)
+            .eq('programa_id', formData.programa_id)
+            .maybeSingle();
+
+          const saldoDisp = Number(estoqueCheck?.saldo_atual || 0);
+          if (delta > saldoDisp) {
+            throw new Error(`Saldo insuficiente para o ajuste. Disponível: ${saldoDisp.toLocaleString('pt-BR')} — Adicional necessário: ${delta.toLocaleString('pt-BR')}`);
+          }
+        }
+
+        const { error: rpcError } = await supabase.rpc('admin_update_venda', {
+          p_venda_id:                editingVendaId,
+          p_usuario_id:              usuario!.id,
+          p_data_venda:              formData.data_venda,
+          p_cliente_id:              formData.cliente_id || null,
+          p_ordem_compra:            formData.ordem_compra || null,
+          p_cia_parceira:            formData.cia_parceira || null,
+          p_quantidade_milhas:       formData.quantidade_milhas,
+          p_valor_milheiro:          formData.valor_milheiro,
+          p_valor_total:             formData.valor_total,
+          p_taxa_embarque:           formData.taxa_embarque,
+          p_taxa_resgate:            formData.taxa_resgate,
+          p_taxa_bagagem:            formData.taxa_bagagem,
+          p_cartao_taxa_embarque_id: formData.cartao_taxa_embarque_id || null,
+          p_cartao_taxa_bagagem_id:  formData.cartao_taxa_bagagem_id || null,
+          p_cartao_taxa_resgate_id:  formData.cartao_taxa_resgate_id || null,
+          p_data_voo_ida:            formData.data_voo_ida || null,
+          p_data_voo_volta:          formData.data_voo_volta || null,
+          p_nome_passageiro:         formData.nome_passageiro || null,
+          p_quantidade_passageiros:  formData.quantidade_passageiros,
+          p_trecho:                  formData.trecho || null,
+          p_tarifa_diamante:         formData.tarifa_diamante,
+          p_milhas_bonus:            formData.milhas_bonus,
+          p_custo_emissao:           formData.custo_emissao,
+          p_emissor:                 formData.emissor || null,
+          p_observacao:              formData.observacao || null,
+          p_lucro_real:              lucroReal,
+          p_localizador:             formData.localizador || null,
+          p_valor_conta:             calcularValorTotalVendas(),
+          p_data_vencimento_venda:   formData.data_vencimento_venda,
+        });
+        if (rpcError) throw new Error(rpcError.message);
+
+        await supabase.from('logs').insert({
+          usuario_id: usuario?.id,
+          usuario_nome: usuario?.nome || '',
+          acao: 'UPDATE',
+          linha_afetada: `Venda: id=${editingVendaId}`,
+          dados_antes: null,
+          dados_depois: formData,
+        });
+
+        setDialogConfig({ isOpen: true, type: 'success', title: 'Sucesso', message: 'Venda atualizada com sucesso!' });
+        handleCloseModal();
+        fetchData();
+
+      } else {
+        // ── Modo Inserção ──
+        const { data: estoqueCheck } = await supabase
+          .from('estoque_pontos')
+          .select('id, saldo_atual')
+          .eq('parceiro_id', formData.parceiro_id)
+          .eq('programa_id', formData.programa_id)
+          .maybeSingle();
+
+        if (!estoqueCheck) {
+          const parceiroSel = parceiros.find((p: any) => p.id === formData.parceiro_id);
+          const programaSel = programas.find((p: any) => p.id === formData.programa_id);
+          throw new Error(
+            `${parceiroSel?.nome_parceiro || 'O parceiro'} não possui conta cadastrada no programa ${programaSel?.nome || 'selecionado'}.\n\nRegistre uma compra ou movimentação para este parceiro neste programa antes de realizar uma venda.`
+          );
+        }
+
+        const saldoFresh = Number(estoqueCheck.saldo_atual || 0);
+        if (saldoFresh !== saldoAtual) setSaldoAtual(saldoFresh);
+        if (formData.quantidade_milhas > saldoFresh) {
+          throw new Error(`Saldo insuficiente. Saldo atual: ${saldoFresh.toLocaleString('pt-BR')} — Quantidade solicitada: ${formData.quantidade_milhas.toLocaleString('pt-BR')}`);
+        }
+
+        const vendaData = {
+          parceiro_id: formData.parceiro_id,
+          cliente_id: formData.cliente_id || null,
+          data_venda: formData.data_venda,
+          ordem_compra: formData.ordem_compra || null,
+          programa_id: formData.programa_id,
+          cia_parceira: formData.cia_parceira || null,
+          quantidade_milhas: formData.quantidade_milhas,
+          valor_milheiro: formData.valor_milheiro,
+          valor_total: formData.valor_total,
+          taxa_embarque: formData.taxa_embarque,
+          taxa_resgate: formData.taxa_resgate,
+          taxa_bagagem: formData.taxa_bagagem,
+          cartao_taxa_embarque_id: formData.cartao_taxa_embarque_id || null,
+          cartao_taxa_bagagem_id: formData.cartao_taxa_bagagem_id || null,
+          cartao_taxa_resgate_id: formData.cartao_taxa_resgate_id || null,
+          data_voo_ida: formData.data_voo_ida || null,
+          data_voo_volta: formData.data_voo_volta || null,
+          nome_passageiro: formData.nome_passageiro || null,
+          quantidade_passageiros: formData.quantidade_passageiros,
+          trecho: formData.trecho || null,
+          tarifa_diamante: formData.tarifa_diamante,
+          milhas_bonus: formData.milhas_bonus,
+          custo_emissao: formData.custo_emissao,
+          emissor: formData.emissor || null,
+          observacao: formData.observacao || null,
+          custo_medio: custoMedio,
+          lucro_real: lucroReal,
+          status: 'concluida',
+          created_by: usuario?.id,
+        };
+
+        const { data: vendaCriada, error: vendaError } = await supabase
+          .from('vendas')
+          .insert([vendaData])
+          .select()
+          .single();
+
+        if (vendaError) throw vendaError;
+
+        if (formData.localizador) {
+          const { error: localizadorError } = await supabase
+            .from('localizadores')
+            .insert([{
+              venda_id: vendaCriada.id,
+              codigo_localizador: formData.localizador,
+              status: 'emitido',
+            }]);
+          if (localizadorError) throw localizadorError;
+        }
+
+        if (formData.data_vencimento_venda) {
+          const { error: contaError } = await supabase.from('contas_receber').insert([{
             venda_id: vendaCriada.id,
-            codigo_localizador: formData.localizador,
-            status: 'emitido',
+            origem_tipo: 'venda',
+            origem_id: vendaCriada.id,
+            data_vencimento: formData.data_vencimento_venda,
+            valor_parcela: calcularValorTotalVendas(),
+            numero_parcela: 1,
+            total_parcelas: 1,
+            status_pagamento: 'pendente',
           }]);
+          if (contaError) throw contaError;
+        }
 
-        if (localizadorError) throw localizadorError;
+        await supabase.from('logs').insert({
+          usuario_id: usuario?.id,
+          usuario_nome: usuario?.nome || '',
+          acao: 'INSERT',
+          linha_afetada: `Venda: ${formData.quantidade_milhas} pts`,
+          dados_antes: null,
+          dados_depois: formData,
+        });
+
+        setDialogConfig({ isOpen: true, type: 'success', title: 'Sucesso', message: 'Venda cadastrada com sucesso!' });
+        handleCloseModal();
+        fetchData();
       }
-
-      // Criar conta a receber se data de vencimento informada
-      if (formData.data_vencimento_venda) {
-        const { error: contaError } = await supabase.from('contas_receber').insert([{
-          venda_id: vendaCriada.id,
-          origem_tipo: 'venda',
-          origem_id: vendaCriada.id,
-          data_vencimento: formData.data_vencimento_venda,
-          valor_parcela: calcularValorTotalVendas(),
-          numero_parcela: 1,
-          total_parcelas: 1,
-          status_pagamento: 'pendente',
-        }]);
-        if (contaError) throw contaError;
-      }
-
-      await supabase.from('logs').insert({
-        usuario_id: usuario?.id,
-        usuario_nome: usuario?.nome || '',
-        acao: 'INSERT',
-        linha_afetada: `Venda: ${formData.quantidade_milhas} pts`,
-        dados_antes: null,
-        dados_depois: formData
-      });
-
-      setDialogConfig({
-        isOpen: true,
-        type: 'success',
-        title: 'Sucesso',
-        message: 'Venda cadastrada com sucesso!'
-      });
-
-      handleCloseModal();
-      fetchData();
     } catch (error: any) {
       console.error('Erro ao salvar venda:', error);
       setError(error.message || 'Erro ao processar venda');
@@ -788,6 +934,15 @@ export default function Vendas() {
                         </button>
                         {isAdmin && (
                           <button
+                            onClick={() => handleOpenEditModal(venda.id)}
+                            className="text-yellow-600 hover:text-yellow-800 p-1"
+                            title="Editar"
+                          >
+                            <Pencil className="w-5 h-5" />
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button
                             onClick={() => handleDelete(venda.id)}
                             className="text-red-600 hover:text-red-900 p-1"
                             title="Excluir"
@@ -805,7 +960,7 @@ export default function Vendas() {
         </div>
       </div>
 
-      <Modal isOpen={showModal} onClose={handleCloseModal} title="Nova Venda">
+      <Modal isOpen={showModal} onClose={handleCloseModal} title={editingVendaId ? 'Editar Venda' : 'Nova Venda'}>
         <form onSubmit={handleSubmit}>
           {error && (
             <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -822,12 +977,21 @@ export default function Vendas() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Parceiro <span className="text-red-500">*</span>
                   </label>
-                  <ParceiroSearch
-                    parceiros={parceiros}
-                    value={formData.parceiro_id}
-                    onChange={(parceiroId) => setFormData(prev => ({ ...prev, parceiro_id: parceiroId }))}
-                    placeholder="Digite para buscar parceiro..."
-                  />
+                  {editingVendaId ? (
+                    <input
+                      type="text"
+                      readOnly
+                      value={parceiros.find(p => p.id === formData.parceiro_id)?.nome_parceiro || formData.parceiro_id}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600"
+                    />
+                  ) : (
+                    <ParceiroSearch
+                      parceiros={parceiros}
+                      value={formData.parceiro_id}
+                      onChange={(parceiroId) => setFormData(prev => ({ ...prev, parceiro_id: parceiroId }))}
+                      placeholder="Digite para buscar parceiro..."
+                    />
+                  )}
                 </div>
 
                 <div>
@@ -898,18 +1062,27 @@ export default function Vendas() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Programa Fidelidade <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    required
-                    value={formData.programa_id}
-                    onChange={(e) => setFormData(prev => ({ ...prev, programa_id: e.target.value }))}
-                    disabled={!formData.parceiro_id}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                  >
-                    <option value="">Selecione</option>
-                    {programas.map(p => (
-                      <option key={p.id} value={p.id}>{p.nome}</option>
-                    ))}
-                  </select>
+                  {editingVendaId ? (
+                    <input
+                      type="text"
+                      readOnly
+                      value={programas.find(p => p.id === formData.programa_id)?.nome || formData.programa_id}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600"
+                    />
+                  ) : (
+                    <select
+                      required
+                      value={formData.programa_id}
+                      onChange={(e) => setFormData(prev => ({ ...prev, programa_id: e.target.value }))}
+                      disabled={!formData.parceiro_id}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                    >
+                      <option value="">Selecione</option>
+                      {programas.map(p => (
+                        <option key={p.id} value={p.id}>{p.nome}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 <div>
@@ -1432,7 +1605,7 @@ export default function Vendas() {
               disabled={saving}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
-              {saving ? 'Salvando...' : 'Salvar'}
+              {saving ? 'Salvando...' : editingVendaId ? 'Atualizar' : 'Salvar'}
             </button>
           </div>
         </form>
