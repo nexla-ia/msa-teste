@@ -189,6 +189,30 @@ export default function ConciliacaoBancaria() {
     }
   };
 
+  // Cria um lançamento financeiro a partir de um item conciliado.
+  // Retorna o id do lançamento criado, ou null em caso de erro.
+  const criarLancamentoDeConciliacao = async (
+    item: ConciliacaoItem,
+    vendaId: string | null
+  ): Promise<string | null> => {
+    const { data, error } = await supabase.from('lancamentos_financeiros').insert({
+      data_lancamento:   item.data_extrato,
+      descricao:         item.descricao_extrato || 'Conciliação bancária',
+      valor:             item.valor_extrato,
+      tipo:              item.tipo === 'credito' ? 'entrada' : 'saida',
+      conta_bancaria_id: item.conta_bancaria_id,
+      venda_id:          vendaId,
+      conciliado:        true,
+      observacao:        'Gerado automaticamente pela Conciliação Bancária',
+    }).select('id').single();
+
+    if (error) {
+      console.error('Erro ao criar lançamento financeiro:', error);
+      return null;
+    }
+    return data?.id || null;
+  };
+
   const handleVincular = async (lancamentoId: string) => {
     if (!vinculoItem) return;
     try {
@@ -216,10 +240,17 @@ export default function ConciliacaoBancaria() {
     if (!vinculoItem) return;
     try {
       const venda = vendas.find(v => v.id === vendaId);
-      const divergente = venda && Math.abs(venda.valor_total - vinculoItem.valor_extrato) > 0.01;
+      const divergente = !!(venda && Math.abs(venda.valor_total - vinculoItem.valor_extrato) > 0.01);
+
+      // Se conciliou certo, gera lançamento financeiro vinculado à venda
+      let novoLancamentoId: string | null = null;
+      if (!divergente) {
+        novoLancamentoId = await criarLancamentoDeConciliacao(vinculoItem, vendaId);
+      }
+
       const { error } = await supabase.from('conciliacao_bancaria').update({
         venda_id: vendaId,
-        lancamento_id: null,
+        lancamento_id: novoLancamentoId,
         status: divergente ? 'divergente' : 'conciliado',
         data_conciliacao: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -229,19 +260,21 @@ export default function ConciliacaoBancaria() {
       setVinculoOpen(false);
       setVinculoItem(null);
       loadData();
-      setDialog({ isOpen: true, type: 'success', title: 'Conciliado!', message: divergente ? 'Venda vinculada com divergência de valor.' : 'Venda conciliada com sucesso!' });
+      setDialog({ isOpen: true, type: 'success', title: 'Conciliado!', message: divergente ? 'Venda vinculada com divergência de valor.' : 'Venda conciliada e lançamento financeiro criado.' });
     } catch (err: any) {
       setDialog({ isOpen: true, type: 'error', title: 'Erro', message: err.message });
     }
   };
 
   const handleDesconciliar = async (item: ConciliacaoItem) => {
+    // Apaga o lançamento financeiro gerado pela conciliação (se houver)
+    if (item.lancamento_id) {
+      await supabase.from('lancamentos_financeiros').delete().eq('id', item.lancamento_id);
+    }
     await supabase.from('conciliacao_bancaria').update({
       lancamento_id: null, venda_id: null, status: 'pendente',
       data_conciliacao: null, updated_at: new Date().toISOString(),
     }).eq('id', item.id);
-    if (item.lancamento_id)
-      await supabase.from('lancamentos_financeiros').update({ conciliado: false }).eq('id', item.lancamento_id);
     if (item.venda_id)
       await supabase.from('vendas').update({ conciliado: false }).eq('id', item.venda_id);
     loadData();
@@ -281,9 +314,10 @@ export default function ConciliacaoBancaria() {
       // Só concilia automaticamente se houver exatamente 1 parcela com valor e data batendo
       if (crMatchesExatos.length === 1) {
         const cr = crMatchesExatos[0];
+        const novoLancamentoId = await criarLancamentoDeConciliacao(item, cr.venda_id);
         const { error } = await supabase.from('conciliacao_bancaria').update({
           venda_id: cr.venda_id,
-          lancamento_id: null,
+          lancamento_id: novoLancamentoId,
           status: 'conciliado',
           data_conciliacao: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -308,9 +342,10 @@ export default function ConciliacaoBancaria() {
 
       if (matches.length === 1) {
         const venda = matches[0];
+        const novoLancamentoId = await criarLancamentoDeConciliacao(item, venda.id);
         const { error } = await supabase.from('conciliacao_bancaria').update({
           venda_id: venda.id,
-          lancamento_id: null,
+          lancamento_id: novoLancamentoId,
           status: 'conciliado',
           data_conciliacao: new Date().toISOString(),
           updated_at: new Date().toISOString(),
